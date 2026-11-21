@@ -12,8 +12,8 @@ An independent, source-grounded AI assistant for analyzing PDF, Word, and Excel 
 - `src/document_agent/agent.py`: LLM provider integrations and tool orchestration
 - `tests/`: regression and integration tests
 
-## Next objective: hybrid retrieval
-Add an optional meaning-based search alongside the existing exact keyword search. Preserve original citations and source text. Use a configurable, documented embedding model; cache per-document vectors and refresh incrementally; combine lexical and semantic ranks using a transparent, bounded approach (such as reciprocal rank fusion). Ensure exact identifiers remain searchable, provide a lexical-only fallback if embeddings are unavailable, and test misspellings, paraphrases, exact IDs, numeric values, and changed documents. See `docs/HYBRID_RETRIEVAL_PLAN.md`.
+## Hybrid retrieval — implemented opt-in v1; next: evaluate and scale
+The initial hybrid retrieval implementation lives in `src/document_agent/hybrid.py` and is configured through `DOCUMENT_AGENT_RETRIEVAL_MODE=hybrid`. It provides local sentence embeddings, citation-based SQLite caching, cosine ranking and reciprocal rank fusion, with keyword fallback. The next objectives are real-model held-out retrieval evaluation, better exact identifier coverage, profiling and scalable vector indexing. Do not equate semantic similarity with answer verification. See `docs/HYBRID_RETRIEVAL_PLAN.md`.
 
 ## Engineering rules
 - Work on feature branches; avoid breaking `main`.

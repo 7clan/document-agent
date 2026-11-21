@@ -1,6 +1,6 @@
 # Document Intelligence Agent
 
-Independent, source-grounded document analysis for PDF, Excel, and Word. **Current retrieval is lexical; hybrid keyword + semantic retrieval is planned, not yet implemented.** See [hybrid retrieval plan](docs/HYBRID_RETRIEVAL_PLAN.md).
+Independent, source-grounded document analysis for PDF, Excel, and Word. **Hybrid keyword + local semantic retrieval is available as an opt-in mode.** The default remains keyword search unless configured otherwise. See [hybrid implementation notes](docs/HYBRID_RETRIEVAL_PLAN.md).
 
 A source-aware AI document assistant for project contracts and Bills of Quantities (BOQs).
 It indexes text PDFs, Excel workbooks and Word documents, implements deterministic
@@ -363,9 +363,63 @@ full JSON audits are Git-ignored. OpenAI and Groq-hosted Llama were not live
 checked with this account. The earlier live exercises and their observed
 limitations are documented in [the test plan](docs/TEST_PLAN.md).
 
+## Hybrid retrieval (optional, local)
+
+The existing read-only `search_documents` tool supports both **keyword** and
+**hybrid** modes. Hybrid mode combines the original exact/phrase keyword search
+with local sentence embeddings and merges their citation-backed results using
+reciprocal rank fusion (keyword results weighted 2:1). It works for indexed
+PDF passages, Word paragraphs/tables and Excel rows. BOQ amounts and totals
+remain deterministic Python calculations, never embedding-based guesses.
+
+### Windows PowerShell setup
+
+Run these commands from your existing project checkout:
+
+```powershell
+pip install -e ".[embeddings]"
+```
+
+Set the following in your local `.env` (not GitHub):
+
+```dotenv
+DOCUMENT_AGENT_RETRIEVAL_MODE=hybrid
+DOCUMENT_AGENT_EMBEDDING_MODEL=sentence-transformers/all-MiniLM-L6-v2
+DOCUMENT_AGENT_EMBEDDING_ALLOW_DOWNLOAD=1
+```
+
+On the first run, the opt-in download setting permits the local embedding model
+weights to be downloaded. Once cached, set `DOCUMENT_AGENT_EMBEDDING_ALLOW_DOWNLOAD=0`
+to keep model loading offline. This model runs embeddings locally; document text
+is not sent to an embedding API. A local model is optional; without it, the
+tool transparently falls back to keyword search and reports a warning.
+
+Start the app as usual:
+
+```powershell
+python -m streamlit run app.py
+```
+
+Index your folder again to populate the embedding cache. Existing document
+indexes also receive embeddings lazily on the first hybrid search. SQLite
+stores vectors with source citations and content fingerprints; unchanged
+passages are reused while changed or removed sources are updated.
+
+To restore the previous behavior, set `DOCUMENT_AGENT_RETRIEVAL_MODE=keyword`
+(or call `search_documents` with `mode="keyword"`). An explicit
+`mode="hybrid"` argument is also available to the agent tool.
+
+**Validation:** CI runs offline tests with a deterministic fake embedding
+model for indexing, filtering, fallback and fusion. This does *not* establish
+real-model retrieval accuracy on unseen customer documents; measure that
+separately before production use.
+
+Model docs: [Sentence Transformers](https://sbert.net/docs/package_reference/sentence_transformer/model.html)
+and [all-MiniLM-L6-v2](https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2).
+
 ## Current limitations
 
-- Keyword search is a bounded lexical baseline; semantic/hybrid retrieval is not implemented.
+- Hybrid retrieval requires an optional locally installed embedding model and may fall back to keyword-only search. The built-in SQLite vector scan is intended for modest collections; very large corpora need a dedicated vector index.
 - Scanned or image-only PDF pages need OCR; pages without extractable text are reported.
 - PDF table extraction is heuristic. Borderless text-line BOQs are flagged for visual review, and rows without a verified currency are omitted from currency-filtered totals.
 - Complex merged Excel headings and unusual BOQ layouts still need human inspection of the selected column and warnings.
@@ -397,8 +451,8 @@ against independent acceptance fixtures.
 
 This project began as a time-boxed document-analysis prototype and is now maintained as an independent tool.
 The [development history](docs/DEVELOPMENT_NOTE.md) records its initial implementation,
-test approach, provider choices and limitations. The next improvement is
-[hybrid retrieval](docs/HYBRID_RETRIEVAL_PLAN.md), not yet implemented.
+test approach, provider choices and limitations. Hybrid retrieval is available as an opt-in enhancement; see the
+[implementation notes](docs/HYBRID_RETRIEVAL_PLAN.md).
 
 ## Credentials and source-only archive
 

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import sqlite3
 from datetime import date, datetime
@@ -87,8 +88,8 @@ def inspect_document(conn: sqlite3.Connection, file: str) -> dict[str, Any]:
     return {"document": doc, "sheets": sheets}
 
 
-def search_documents(conn: sqlite3.Connection, query: str, limit: int = 20,
-                     file: str = "") -> dict[str, Any]:
+def _keyword_search_documents(conn: sqlite3.Connection, query: str, limit: int = 20,
+                              file: str = "") -> dict[str, Any]:
     """Bounded lexical retrieval across PDF, Word and worksheet rows."""
     query = _clean(query)[:200]
     if not query:
@@ -152,6 +153,46 @@ def search_documents(conn: sqlite3.Connection, query: str, limit: int = 20,
         del hit["order"]
     return {"results": found, "returned": len(found), "total_matches": total,
             "truncated": total > limit}
+
+
+def search_documents(conn: sqlite3.Connection, query: str, limit: int = 20,
+                     file: str = "", mode: str = "") -> dict[str, Any]:
+    """Search with keyword-only or local hybrid retrieval.
+
+    Hybrid is opt-in via DOCUMENT_AGENT_RETRIEVAL_MODE=hybrid or mode="hybrid".
+    Embedding failures transparently fall back to the original lexical search.
+    """
+    selected = (mode or os.getenv("DOCUMENT_AGENT_RETRIEVAL_MODE", "keyword")).lower()
+    if selected not in {"keyword", "hybrid"}:
+        return {"error": "Retrieval mode must be 'keyword' or 'hybrid'"}
+    max_results = min(max(int(limit), 1), 100)
+    if selected == "keyword":
+        return _keyword_search_documents(conn, query, limit=max_results, file=file)
+    candidate_limit = min(max(max_results * 4, 20), 100)
+    lexical = _keyword_search_documents(conn, query, limit=candidate_limit, file=file)
+    if "error" in lexical or not lexical.get("results") and not query.strip():
+        return lexical
+
+    from .hybrid import fuse_results, semantic_search
+
+    try:
+        semantic = semantic_search(conn, query, file=file, limit=candidate_limit)
+    except Exception as exc:  # noqa: BLE001 - optional local model must not block document search
+        fallback = _keyword_search_documents(conn, query, limit=max_results, file=file)
+        fallback["retrieval_mode"] = "keyword"
+        fallback["retrieval_warning"] = (
+            f"Semantic retrieval unavailable ({type(exc).__name__}); using keyword search."
+        )
+        return fallback
+    combined = fuse_results(lexical["results"], semantic, max_results)
+    return {
+        "results": combined, "returned": len(combined),
+        "total_matches": len({hit["citation"] for hit in lexical["results"] + semantic}),
+        "truncated": lexical["truncated"] or (
+            len({hit["citation"] for hit in lexical["results"] + semantic}) > max_results
+        ),
+        "retrieval_mode": "hybrid", "semantic_matches": len(semantic),
+    }
 
 
 MONTH = r"(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*"
@@ -330,8 +371,8 @@ TOOL_SCHEMAS = [
      "parameters": {"type": "object", "properties": {}}},
     {"name": "inspect_document", "description": "Inspect a document. Excel previews include exact row citations such as File.xlsx | Sheet | row 2; copy one exactly for get_evidence or a claim. Call before ambiguous spreadsheet queries.",
      "parameters": {"type": "object", "properties": {"file": {"type": "string"}}, "required": ["file"]}},
-    {"name": "search_documents", "description": "Search PDF text, Word paragraphs and tables, and spreadsheet rows for clauses, scope, deliverables and terminology. Returns source references.",
-     "parameters": {"type": "object", "properties": {"query": {"type": "string"}, "limit": {"type": "integer"}, "file": {"type": "string"}}, "required": ["query"]}},
+    {"name": "search_documents", "description": "Search PDF, Word and Excel source records. Optional mode=hybrid combines exact keyword matching with locally cached semantic embeddings, with keyword fallback if unavailable. Use file to restrict results. Returns original source citations.",
+     "parameters": {"type": "object", "properties": {"query": {"type": "string"}, "limit": {"type": "integer"}, "file": {"type": "string"}, "mode": {"type": "string", "enum": ["keyword", "hybrid"]}}, "required": ["query"]}},
     {"name": "query_spreadsheet", "description": "Run READ-ONLY financial BOQ amount queries, not general milestone or schedule lookup. Set operator='all' with no value to list/sum all BOQ rows; provide value for gt/gte/lt/lte/eq comparisons. Return exact source cells and warnings. Paginate with offset.",
      "parameters": {"type": "object", "properties": {
          "column_hint": {"type": "string"}, "operator": {"type": "string", "enum": ["gt","gte","lt","lte","eq","all"]},

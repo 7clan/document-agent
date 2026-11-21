@@ -21,6 +21,7 @@ dependencies = [
 [project.optional-dependencies]
 openai = ["openai>=1.80,<3"]
 llama = ["openai>=1.80,<3"]  # Groq/other Chat Completions-compatible Llama hosts
+embeddings = ["sentence-transformers>=3.0,<7"]  # Local CPU embedding model, optional
 dev = ["pytest>=8,<10", "ruff>=0.9,<1", "xlwt>=1.3,<2", "reportlab>=4,<5"]
 
 [project.scripts]
