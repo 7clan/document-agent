@@ -89,6 +89,19 @@ def demo_cases() -> list[dict[str, Any]]:
          "expected_citations": ["QA.pdf | page 1 | chunk 0"]},
         {"query": "Has a final acceptance certificate been issued?",
          "expected_citations": ["QA.pdf | page 1 | chunk 0"]},
+        # Harder paraphrases: intentionally avoid the original key phrases.
+        {"query": "When can the customer take possession of the finished facility?",
+         "expected_citations": ["Contract.pdf | page 1 | chunk 0"]},
+        {"query": "Which proposed equipment requires permission before purchasing?",
+         "expected_citations": ["Contract.pdf | page 2 | chunk 0"]},
+        {"query": "Which systems must be checked a second time?",
+         "expected_citations": ["QA.pdf | page 1 | chunk 0"]},
+        {"query": "Was the alternative finish date formally agreed to?",
+         "expected_citations": ["Minutes.docx | paragraph 1"]},
+        {"query": "Where was more wiring support installed in the second building?",
+         "expected_citations": ["CO07.pdf | page 1 | chunk 0"]},
+        {"query": "How did the approved variation affect the total financial obligation?",
+         "expected_citations": ["CO07.pdf | page 1 | chunk 0"]},
     ]
 
 
