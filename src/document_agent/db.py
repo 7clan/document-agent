@@ -45,6 +45,18 @@ def connect(db_path: str | Path) -> sqlite3.Connection:
           UNIQUE(document_id, location)
         );
         CREATE INDEX IF NOT EXISTS idx_word_blocks_document ON word_blocks(document_id, ordinal);
+        CREATE TABLE IF NOT EXISTS source_embeddings (
+          id INTEGER PRIMARY KEY,
+          document_id INTEGER NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+          citation TEXT NOT NULL,
+          model_id TEXT NOT NULL,
+          content_sha256 TEXT NOT NULL,
+          dimensions INTEGER NOT NULL,
+          vector_json TEXT NOT NULL,
+          UNIQUE(citation,model_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_embeddings_model ON source_embeddings(model_id);
+        CREATE INDEX IF NOT EXISTS idx_embeddings_document ON source_embeddings(document_id);
     """)
     # Existing local indexes can be opened after the fingerprint columns were added.
     columns = {row[1] for row in connection.execute("PRAGMA table_info(documents)")}
@@ -64,6 +76,7 @@ def replace_document(conn: sqlite3.Connection, relative_path: str, kind: str) ->
     conn.execute("DELETE FROM sheet_rows WHERE document_id=?", (doc_id,))
     conn.execute("DELETE FROM pdf_boq_rows WHERE document_id=?", (doc_id,))
     conn.execute("DELETE FROM word_blocks WHERE document_id=?", (doc_id,))
+    conn.execute("DELETE FROM source_embeddings WHERE document_id=?", (doc_id,))
     conn.commit()
     return doc_id
 
