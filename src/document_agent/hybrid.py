@@ -14,6 +14,8 @@ from collections.abc import Iterator
 from functools import lru_cache
 from typing import Any
 
+from .retrieval_ids import matches_reference, requested_references
+
 DEFAULT_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 
 
@@ -169,7 +171,12 @@ def semantic_search(
     embedding_id = model_id() if embedding_id is None else embedding_id
     sync_embeddings(conn, encoder=encoder, embedding_id=embedding_id)
     question = _encode(encoder, [query])[0]
-    sources = {source["citation"]: source for source in source_records(conn, file)}
+    references = requested_references(query)
+    sources = {
+        source["citation"]: source
+        for source in source_records(conn, file)
+        if matches_reference(source["text"], references)
+    }
     sql = (
         "SELECT e.citation,e.dimensions,e.vector_json FROM source_embeddings e "
         "JOIN documents d ON d.id=e.document_id WHERE e.model_id=? AND d.status='ready' "

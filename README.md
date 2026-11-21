@@ -417,6 +417,46 @@ separately before production use.
 Model docs: [Sentence Transformers](https://sbert.net/docs/package_reference/sentence_transformer/model.html)
 and [all-MiniLM-L6-v2](https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2).
 
+## Retrieval quality evaluation
+
+After enabling hybrid retrieval, compare keyword and semantic retrieval on a
+**labeled corpus** rather than relying on successful demo questions.
+
+Run the fictional test corpus:
+
+```powershell
+python scripts/evaluate_retrieval.py --demo --mode keyword --k 5
+python scripts/evaluate_retrieval.py --demo --mode both --k 5
+```
+
+The second command requires the optional local embedding model described above.
+If embeddings are missing or fail, the evaluator marks the hybrid result **invalid**
+and exits with code 2 rather than reporting a misleading semantic score.
+
+For your own documents, create a JSON file with the *exact indexed citations*:
+
+```json
+[
+  {
+    "query": "Which item corresponds to EL-103?",
+    "expected_citations": ["BOQ.xlsx | Items | row 2"],
+    "file": "BOQ.xlsx"
+  }
+]
+```
+
+Then run:
+
+```powershell
+python scripts/evaluate_retrieval.py --db .local/document_index.sqlite --cases my_cases.json --mode both --k 5 --output .local/retrieval-report.json
+```
+
+Use your actual SQLite path from the application configuration. Do not commit
+private evaluation questions, documents or generated reports. Results include
+**Recall@k, Hit@k and MRR@k** with per-question citations and elapsed time.
+These are retrieval metrics, not accuracy scores for the final LLM response.
+The demo is deliberately tiny and must not be used to claim real-world quality.
+
 ## Current limitations
 
 - Hybrid retrieval requires an optional locally installed embedding model and may fall back to keyword-only search. The built-in SQLite vector scan is intended for modest collections; very large corpora need a dedicated vector index.
