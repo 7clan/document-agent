@@ -88,6 +88,17 @@ def test_ollama_timeout_has_safe_specific_message():
         "Ollama Cloud timed out during the request. Please retry shortly.")
 
 
+def test_provider_usage_error_reports_safe_action_without_response_body():
+    error = RuntimeError("private provider response body")
+    error.status_code = 402
+    error._document_phase = "tool"
+    message = safe_provider_error(error, "ollama_cloud")
+    assert "HTTP 402" in message
+    assert "available usage or billing" in message
+    assert "private provider response" not in message
+    assert provider_error_diagnostic(error)["phase"] == "tool"
+
+
 def test_ollama_server_error_retried_once_without_replaying_history(monkeypatch):
     waits = []
     monkeypatch.setattr("document_agent.agent.time.sleep", waits.append)

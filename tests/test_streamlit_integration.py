@@ -13,7 +13,7 @@ from document_agent.tools import extract_dates, query_spreadsheet
 
 
 def test_switching_folders_clears_answer_and_blocks_stale_index(tmp_path, monkeypatch):
-    old_folder = tmp_path / "interview"
+    old_folder = tmp_path / "prior_folder"
     demo_folder = tmp_path / "demo"
     old_folder.mkdir()
     demo_folder.mkdir()
@@ -48,6 +48,9 @@ def test_switching_folders_clears_answer_and_blocks_stale_index(tmp_path, monkey
     assert not page.exception
     assert not next(button for button in page.button
                     if button.label == "Ask agent").disabled
+    (demo_folder / "pending.pdf").write_bytes(b"waiting for indexing")
+    page.run()
+    assert any("waiting for indexing" in item.value for item in page.sidebar.info)
 
 
 def test_streamlit_indexes_and_displays_verified_boq(tmp_path, monkeypatch):
@@ -62,8 +65,10 @@ def test_streamlit_indexes_and_displays_verified_boq(tmp_path, monkeypatch):
     pdf.save()
     db_path = tmp_path / "app.db"
     monkeypatch.setenv("DOCUMENT_AGENT_DB_PATH", str(db_path))
+    # UI behavior is independent of the optional embedding model's cold load.
+    monkeypatch.setenv("DOCUMENT_AGENT_RETRIEVAL_MODE", "keyword")
     app = Path(__file__).resolve().parents[1] / "app.py"
-    page = AppTest.from_file(app, default_timeout=10).run()
+    page = AppTest.from_file(app, default_timeout=20).run()
     assert not page.exception
     next(field for field in page.sidebar.text_input
          if field.label == "Folder path on this computer").set_value(str(tmp_path)).run()
@@ -107,6 +112,22 @@ def test_streamlit_indexes_and_displays_verified_boq(tmp_path, monkeypatch):
     assert not page.exception
     assert any("AI answer with checked source references" in item.value
                for item in page.caption)
+    page.session_state["last_answer"] = Answer(
+        "Source-linked answer", ["Contract.pdf | page 1 | chunk 0"],
+        [{"name": "search_documents", "ok": True, "retrieval_mode": "hybrid",
+          "semantic_matches": 2}], verification_status="evidence_linked",
+    )
+    page.run()
+    assert any("Retrieval used hybrid keyword + semantic search" in item.value
+               for item in page.caption)
+    page.session_state["last_answer"] = Answer(
+        "Fallback answer", ["Contract.pdf | page 1 | chunk 0"],
+        [{"name": "search_documents", "ok": True, "retrieval_mode": "keyword",
+          "retrieval_warning": "Semantic retrieval unavailable (EmbeddingUnavailable); "
+                               "using keyword search."}], verification_status="evidence_linked",
+    )
+    page.run()
+    assert any("keyword fallback was used" in item.value for item in page.warning)
     source_button = next(button for button in page.button
                          if button.label == "Open source")
     source_button.click().run()

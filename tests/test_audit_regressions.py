@@ -1,4 +1,4 @@
-"""Independent audit cases generated without employer documents or API calls."""
+"""Independent audit cases generated without customer documents or API calls."""
 from __future__ import annotations
 
 import datetime as dt

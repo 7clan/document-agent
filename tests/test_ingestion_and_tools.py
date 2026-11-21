@@ -270,7 +270,7 @@ def test_spreadsheet_search_citation_resolves_to_real_row(tmp_path):
     _make_workbook(tmp_path / "boq.xlsx")
     conn = connect(tmp_path / "index.db")
     ingest_folder(conn, tmp_path)
-    result = search_documents(conn, "Transformer", limit=1)
+    result = search_documents(conn, "Transformer", limit=1, mode="keyword")
     assert result["total_matches"] == 1
     citation = result["results"][0]["citation"]
     assert citation == "boq.xlsx | Electrical BOQ | row 2"

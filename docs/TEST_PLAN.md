@@ -36,7 +36,7 @@ Do not mark rows passed until they have actually been executed and independently
 
 Run `python scripts/create_demo.py` once from the repository root, then
 `document-agent ingest ".local/demo_documents"`. The script refuses to overwrite an
-existing folder. These files contain invented project data, not employer documents.
+existing folder. These files contain invented project data, not customer documents.
 The deterministic assertions are in `tests/test_demo_e2e.py`.
 
 | Reviewer question | Exact expected evidence |
@@ -53,7 +53,7 @@ no real confidential documents or live provider calls were used for the new form
 CLI ingestion of the generated folder reported 3 indexed, 0 failed.
 On 2026-10-19, live synthetic smoke checks passed with Gemini `gemini-2.5-flash`,
 Groq `openai/gpt-oss-20b`, and Ollama Cloud `gpt-oss:20b-cloud`. Gemini answered
-all three assessment questions on the synthetic folder with correct source
+all three example questions on the synthetic folder with correct source
 locations. Groq and Ollama Cloud produced correct numeric tool results for the
 BOQ question, though their prose used typographic hyphens in item codes. The
 Groq account listed no Llama chat model; two Llama model IDs returned 404.
@@ -367,7 +367,7 @@ exposed no incorrect calculation, but an evidence-linked scope summary can
 still omit facts. This evaluation does not establish complete coverage of
 unfamiliar documents or prove arbitrary model interpretations.
 
-## Fresh interview-brief exercise (2026-10-20)
+## Fresh document-question exercise (2026-10-20)
 
 A separate fictional folder was generated under ignored
 `.local/interview_blind_20261020` with one contract PDF and two XLSX BOQs. Its
@@ -394,9 +394,9 @@ guarantee for arbitrary PDFs or workbooks.
 
 The fresh corpus exposed a presentation issue, so its dates retest is a
 regression check rather than an untouched held-out measurement. No additional
-provider or arbitrary employer documents were tested in this exercise.
+provider or arbitrary customer documents were tested in this exercise.
 
-## Harder unseen-folder interview exercise (2026-10-20)
+## Harder unseen-folder exercise (2026-10-20)
 
 Five new fictional documents were generated under ignored
 `.local/interview_challenge_20261020`: a two-page contract, an approved
@@ -408,7 +408,7 @@ P-101 (SAR 1,300,000; E13), P-102 (SAR 1,235,000; E14), and C-201
 (SAR 1,180,000; E5), totaling SAR 3,715,000. P-105 is exactly SAR 1,000,000
 and must be excluded. The AED optional item must not enter a SAR result.
 
-| Question | Live observation | Assessment |
+| Question | Live observation | Result |
 | --- | --- | --- |
 | Exact brief: list all cost items above SAR 1 million | Ollama Cloud called real document tools and returned the correct three cells and sum. Initially it falsely labeled coverage incomplete because an explicitly AED-only sheet existed. After a general currency-coverage fix, the same live question returned `deterministically_verified` with no warning. Gemini's attempt returned `provider_error` before an answer. | Ollama pass after fix; Gemini untested due request failure |
 | Exact brief: summarize the scope of work in this contract | Ollama cited contract page 1 and correctly included two 180 kW pumps, 65 metres of header, SCADA alarms, and operation/maintenance manuals. | Pass, evidence-linked |
@@ -452,7 +452,7 @@ the change order and the meeting paragraph separately. Groq GPT-OSS 20B passed
 scope and the cross-document approval question with real search tool calls.
 Ollama Gemma 4 31B passed scope; its separate approval attempt timed out.
 
-A new, previously unused fictional interview folder was generated under ignored
+A new, previously unused fictional evaluation folder was generated under ignored
 `.local/final_unseen_20261020`: two PDFs, two XLSX workbooks and one DOCX.
 The source files establish two 320 kW chillers, 90 metres of pipe, control panel
 CP-7, and rooftop solar/landscaping exclusions. The base BOQ has CH-101 at
@@ -465,7 +465,7 @@ handover was not approved in the meeting minutes. These expected values were
 checked against the generated source documents and CLI index, not the model's
 verification label.
 
-| Fresh interview question type | Ollama Gemma 4 31B observed result |
+| Fresh evaluation question type | Ollama Gemma 4 31B observed result |
 | --- | --- |
 | Scope and exclusions | Correct, PDF page citation |
 | All BOQ items strictly over SAR 1m | CH-101/E6 and CH-102/E7, SAR 2,560,000; deterministic result |
@@ -501,7 +501,7 @@ After these changes, `python -m pytest -q` passed 259 tests with 1 skipped;
 `ruff check src tests app.py scripts` passed. The fresh CLI indexed all five
 files and independently returned CH-101/E6 and CH-102/E7 for strict SAR 1m.
 
-## Three-level interview ladder and optional prompt check (2026-10-20)
+## Three-level question ladder and optional prompt check (2026-10-20)
 
 A different fictional five-file folder was generated under ignored
 `.local/interview_ladder_20261020`: two PDFs, two XLSX workbooks, and one DOCX.
@@ -537,7 +537,7 @@ service outages. Full local answer/evidence JSON is ignored under
 
 After adding provider-specific recovery, a different fictional five-file folder
 was generated under ignored `.local/provider_reliability_20261020`. Three new
-interview questions covered signed scope and exclusions, strict BOQ filtering
+evaluation questions covered signed scope and exclusions, strict BOQ filtering
 across separate sheets, and a cross-document approval/deadline/value decision.
 The source files independently establish two SAR items above one million
 (WP-11/E9 SAR 1,490,000; WP-12/E10 SAR 1,200,000), totaling SAR 2,690,000;
@@ -578,7 +578,7 @@ sanitized request-shape trace and raw results are in the ignored local report.
 After this focused change, the full local suite passed **272 tests, 1 skipped**
 and `ruff check src tests app.py scripts` passed.
 
-## Final three-phase unfamiliar-document interview test (2026-10-21)
+## Final three-phase unfamiliar-document test (2026-10-21)
 
 Seven new fictional files were generated after the application code was frozen:
 three PDFs, three XLSX workbooks and one DOCX. The production `ask()` path was
@@ -612,7 +612,7 @@ in Python. Twelve production answer sessions were made, including the three
 bounded external retries. The full source files, displayed answers, tool calls,
 and retrieved originals are saved only under ignored
 `.local/interview_tests/final_interview_3_results/RESULTS.md` and sibling JSON files. This was
-not a browser test or a reliability estimate for unfamiliar employer documents.
+not a browser test or a reliability estimate for unfamiliar customer documents.
 
 ## Focused Ollama GPT-OSS 20B prompt retest (2026-10-21)
 

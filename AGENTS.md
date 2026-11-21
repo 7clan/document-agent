@@ -1,6 +1,6 @@
 # Document Intelligence Agent — developer instructions
 
-This is an independent document-analysis project, not a hiring submission. Read `README.md` and `PROMPT_FOR_CODEX.md` before editing.
+This is an independent document-analysis project. Read `README.md` and `PROMPT_FOR_CODEX.md` before editing.
 
 Make small, testable changes. Run `python -m pytest -q` and `ruff check src tests app.py scripts` before merging. Do not claim tests ran unless they actually did.
 Never commit `.env`, API secrets, indexed databases, uploads, or confidential source documents. Preserve read-only LLM tools and source citations. Do not allow the model to execute arbitrary code, SQL, or shell commands.

@@ -34,9 +34,9 @@ def _cached_model_catalog(provider: str, key_fingerprint: str,
 st.set_page_config(page_title="Document Intelligence Agent", page_icon="📄", layout="wide")
 st.title("Project Document Agent")
 st.caption("PDFs + Excel + Word · Evidence-grounded answers · Read-only tool calling")
-st.caption("Retrieval configuration: " +
+st.caption("Configured retrieval: " +
            os.getenv("DOCUMENT_AGENT_RETRIEVAL_MODE", "keyword").strip().lower() +
-           " (hybrid requires an installed local embedding model)")
+           ". The actual search mode appears after a search.")
 conn = connect(os.getenv("DOCUMENT_AGENT_DB_PATH", ".local/document_index.db"))
 PROVIDERS = {
     "gemini": ("Google Gemini", "GEMINI_API_KEY", "GEMINI_MODEL", "gemini-2.5-flash"),
@@ -234,6 +234,8 @@ with st.sidebar:
                f"{sum(statuses.get(name, {}).get('status') == 'ready' for name in disk_files)} ready.")
     if not folder_is_indexed:
         st.info("This folder isn't the active index yet. Click Index folder to use its documents.")
+    elif any(name not in statuses for name in disk_files):
+        st.info("Some files are waiting for indexing. Click Index folder to add them to the active index.")
     if not disk_files:
         st.info("No supported documents in this folder. Select files above to add them.")
     else:
@@ -320,6 +322,20 @@ if st.button("Ask agent", disabled=not question.strip() or not ready_to_ask or
 
 if "last_answer" in st.session_state:
     answer = st.session_state["last_answer"]
+    searches = [call for call in answer.tool_calls
+                if call.get("name") == "search_documents" and call.get("ok")]
+    hybrid_searches = [call for call in searches if call.get("retrieval_mode") == "hybrid"]
+    fallbacks = [call for call in searches if call.get("retrieval_warning")]
+    if hybrid_searches:
+        st.caption("Retrieval used hybrid keyword + semantic search. "
+                   f"Semantic matches: {sum(call.get('semantic_matches', 0) for call in hybrid_searches)}.")
+    if fallbacks:
+        st.warning("Semantic retrieval was unavailable; keyword fallback was used. "
+                   + str(fallbacks[-1]["retrieval_warning"]))
+    elif searches and not hybrid_searches:
+        st.caption("Retrieval used keyword search.")
+    elif not searches:
+        st.caption("No successful document search occurred for this answer; hybrid retrieval was not tested.")
     status_labels = {"deterministically_verified": "Deterministically calculated",
                      "evidence_linked": "AI answer with checked source references; facts not verified",
                      "unverified": "Unverified or insufficient"}

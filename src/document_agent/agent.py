@@ -230,6 +230,15 @@ def _model_tool_result(name: str, result: dict[str, Any], repeated: bool,
     return output
 
 
+def _retrieval_audit(name: str, result: dict[str, Any]) -> dict[str, Any]:
+    """Record the search mode without logging source text or model output."""
+    if name != "search_documents" or "error" in result:
+        return {}
+    return {"retrieval_mode": result.get("retrieval_mode", "keyword"),
+            "semantic_matches": result.get("semantic_matches", 0),
+            "retrieval_warning": result.get("retrieval_warning", "")}
+
+
 class ProviderRateLimitError(RuntimeError):
     """A safe user-facing rate-limit message without provider response bodies."""
 
@@ -320,6 +329,12 @@ def safe_provider_error(exc: Exception, provider: str) -> str:
     status = provider_error_diagnostic(exc)["http_status"]
     if status == 429:
         return f"{label} rate limit reached. Please retry shortly."
+    if status == 402:
+        return (f"{label} rejected the request (HTTP 402). Check the account's "
+                "available usage or billing in the provider dashboard.")
+    if status in {401, 403}:
+        return (f"{label} rejected access (HTTP {status}). Check the configured "
+                "key and model permissions.")
     if provider_error_diagnostic(exc)["code"] == "timeout":
         return f"{label} timed out during the request. Please retry shortly."
     if provider_error_diagnostic(exc)["code"] == "connection_error":
@@ -1872,6 +1887,7 @@ def _ask_gemini(conn: sqlite3.Connection, question: str, max_rounds: int,
                                "reused": repeated,
                                "truncated": bool(result.get("truncated") or result.get("has_more")),
                                "incomplete": bool(result.get("incomplete")),
+                               **_retrieval_audit(call.name, result),
                                "result_preview": json.dumps(model_result, default=str)[:500]})
             parts.append(types.Part(function_response=types.FunctionResponse(
                 id=call.id, name=call.name, response={"result": model_result})))
@@ -2261,6 +2277,7 @@ def _ask_openai(conn: sqlite3.Connection, question: str, max_rounds: int,
                           "reused": repeated,
                           "truncated": bool(result.get("truncated") or result.get("has_more")),
                           "incomplete": bool(result.get("incomplete")),
+                          **_retrieval_audit(call.function.name, result),
                           "result_preview": json.dumps(model_result, default=str)[:500]})
             messages.append({"role": "tool", "tool_call_id": call.id,
                              "content": json.dumps(model_result, default=str)})

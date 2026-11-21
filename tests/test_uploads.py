@@ -169,7 +169,7 @@ def test_confirmed_pdf_replacement_refreshes_search_index(tmp_path):
     conn = connect(tmp_path / "index.sqlite")
     try:
         assert ingest_folder(conn, folder)["indexed"] == 1
-        assert search_documents(conn, "12 December 2026")["total_matches"] == 1
+        assert search_documents(conn, "12 December 2026", mode="keyword")["total_matches"] == 1
         save_uploaded_file(
             folder, "mohammad.pdf", make_pdf("Updated deadline 14 January 2027."),
             10 * 1024 * 1024, replace_existing=True,
@@ -178,7 +178,7 @@ def test_confirmed_pdf_replacement_refreshes_search_index(tmp_path):
         assert report["indexed"] == 1
         assert report["failed"] == 0
         assert list_documents(conn)["count"] == 1
-        assert search_documents(conn, "14 January 2027")["total_matches"] == 1
-        assert search_documents(conn, "12 December 2026")["total_matches"] == 0
+        assert search_documents(conn, "14 January 2027", mode="keyword")["total_matches"] == 1
+        assert search_documents(conn, "12 December 2026", mode="keyword")["total_matches"] == 0
     finally:
         conn.close()

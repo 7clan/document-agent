@@ -344,7 +344,10 @@ def _explicit_files(question: str, paths: list[str]) -> tuple[set[str], bool]:
     matches: list[tuple[int, int, set[str]]] = []
     for alias, documents in sorted(aliases.values(), key=lambda item: len(item[0]),
                                    reverse=True):
-        pattern = re.compile(r"(?<![\w./\\-])" + re.escape(alias) + r"(?![\w./\\-])",
+        # A sentence-ending period after a filename is punctuation, while a
+        # period followed by another name character may extend that filename.
+        pattern = re.compile(r"(?<![\w./\\-])" + re.escape(alias) +
+                             r"(?![\w/\\-]|\.[\w])",
                              re.IGNORECASE)
         for match in pattern.finditer(question):
             start, end = match.span()

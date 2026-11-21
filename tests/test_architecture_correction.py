@@ -80,6 +80,15 @@ def test_filename_scope_is_per_question_part():
         "deterministically_verified", "deterministically_verified", "unverified"]
 
 
+def test_explicit_filename_before_sentence_period_is_not_ambiguous():
+    from document_agent.claim_verifier import _explicit_files
+
+    paths = ["01_Main_Contract.pdf", "Contract.pdf"]
+    assert _explicit_files("Summarize 01_Main_Contract.pdf. Cite it.", paths) == (
+        {"01_Main_Contract.pdf"}, False)
+    assert _explicit_files("Summarize Contract.pdf.backup.", paths) == (set(), False)
+
+
 def test_introductory_file_scope_carries_to_following_count_parts():
     question = ("According to QA.pdf, how many circuits passed inspection, "
                 "and how many require retesting?")

@@ -38,8 +38,8 @@ def test_archive_excludes_only_selected_document_from_next_index(tmp_path):
         assert report["failed"] == 0
         assert list_documents(conn)["count"] == 1
         assert [doc["path"] for doc in list_documents(conn)["documents"]] == ["other.pdf"]
-        assert search_documents(conn, "original transformers")["total_matches"] == 0
-        assert search_documents(conn, "other generator")["total_matches"] == 1
+        assert search_documents(conn, "original transformers", mode="keyword")["total_matches"] == 0
+        assert search_documents(conn, "other generator", mode="keyword")["total_matches"] == 1
     finally:
         conn.close()
 

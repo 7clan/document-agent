@@ -31,14 +31,14 @@ Source-linked model prose still needs human review.
   [Groq API key](https://console.groq.com/keys) for an account-accessible compatible model. Provider credentials are
   separate from any ChatGPT/Codex subscription.
 - **Privacy:** Google warns that data from the free tier may be used to improve their products;
-  do not send real confidential employer documents to a free-tier model without permission.
+  do not send confidential customer documents to a free-tier model without permission.
   Confirm the processing terms of any LLM provider with the document owner.
 
 ## Quick start — Windows PowerShell
 
 ```powershell
-git clone <repository-url>
-cd document-intelligence-agent
+git clone https://github.com/7clan/document-agent.git
+cd document-agent
 py -3.11 -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -e ".[openai,dev]"
@@ -334,7 +334,7 @@ these unit tests. Run `document-agent smoke --provider gemini`, `--provider groq
 `--provider ollama_cloud` with your own key before relying on the model in a demo.
 `success: true` requires an actual provider tool call, a verified source, and the exact
 synthetic answer. The smoke command does not read your indexed documents.
-The final local suite on 21 October 2026 passed **272 tests with 1 skipped**;
+The 21 November 2026 local suite passed **299 tests with 1 skipped**;
 Ruff passed. GitHub Actions
 runs the same gate on repository updates; check its latest run before a demo.
 Earlier test history and individual regression scenarios remain in
@@ -348,7 +348,7 @@ Excel workbooks and one Word document) was tested through the production
 covered signed scope and deliverables, a strict SAR BOQ threshold, then a
 cross-document change-order, deadline, and inspection decision. The original
 files were read independently to assess the displayed answers. These are
-small synthetic samples, not estimates of accuracy on employer documents.
+small synthetic samples, not estimates of accuracy on customer documents.
 
 | Provider and model | Contract scope | BOQ above SAR 1 million | Cross-document decision |
 | --- | --- | --- | --- |
@@ -377,7 +377,7 @@ remain deterministic Python calculations, never embedding-based guesses.
 Run these commands from your existing project checkout:
 
 ```powershell
-pip install -e ".[embeddings]"
+python -m pip install -e ".[openai,embeddings,dev]"
 ```
 
 Set the following in your local `.env` (not GitHub):
@@ -414,6 +414,15 @@ model for indexing, filtering, fallback and fusion. This does *not* establish
 real-model retrieval accuracy on unseen customer documents; measure that
 separately before production use.
 
+On 21 November 2026, a local MiniLM model was loaded from disk with downloads
+disabled. In the 14-case fictional demo at `k=3`, keyword search found an
+expected citation in 13/14 cases (mean reciprocal rank 0.8571); hybrid found
+one in 14/14 (mean reciprocal rank 0.9643), with no keyword fallback. Four
+additional queries over a separate nine-file folder each found the expected
+source in the top three in both modes. Hybrid improved the rank for two,
+matched one, and lowered the rank for one. These small evaluations measure
+retrieval only, not the factual accuracy of an AI answer.
+
 Model docs: [Sentence Transformers](https://sbert.net/docs/package_reference/sentence_transformer/model.html)
 and [all-MiniLM-L6-v2](https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2).
 
@@ -448,7 +457,7 @@ For your own documents, create a JSON file with the *exact indexed citations*:
 Then run:
 
 ```powershell
-python scripts/evaluate_retrieval.py --db .local/document_index.sqlite --cases my_cases.json --mode both --k 5 --output .local/retrieval-report.json
+python scripts/evaluate_retrieval.py --db .local/document_index.db --cases my_cases.json --mode both --k 5 --output .local/retrieval-report.json
 ```
 
 Use your actual SQLite path from the application configuration. Do not commit

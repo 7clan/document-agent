@@ -2,6 +2,7 @@
 import json
 
 from document_agent import hybrid
+from document_agent.agent import _retrieval_audit
 from document_agent.db import connect
 from document_agent.tools import get_evidence, search_documents
 
@@ -80,6 +81,18 @@ def test_missing_model_falls_back_to_keyword(monkeypatch):
     assert output["retrieval_mode"] == "keyword"
     assert output["retrieval_warning"]
     assert output["results"][0]["citation"] == "Contract.pdf | page 2 | chunk 0"
+
+
+def test_retrieval_audit_distinguishes_real_hybrid_from_fallback():
+    hybrid_result = {"retrieval_mode": "hybrid", "semantic_matches": 3}
+    fallback_result = {"retrieval_mode": "keyword", "retrieval_warning":
+                       "Semantic retrieval unavailable (EmbeddingUnavailable); using keyword search."}
+    assert _retrieval_audit("search_documents", hybrid_result) == {
+        "retrieval_mode": "hybrid", "semantic_matches": 3, "retrieval_warning": ""}
+    assert _retrieval_audit("search_documents", fallback_result) == {
+        "retrieval_mode": "keyword", "semantic_matches": 0,
+        "retrieval_warning": fallback_result["retrieval_warning"]}
+    assert _retrieval_audit("get_evidence", hybrid_result) == {}
 
 
 def test_file_filter_preserved(monkeypatch):
