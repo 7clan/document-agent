@@ -9,6 +9,7 @@ from datetime import date, datetime
 from itertools import islice
 from typing import Any
 
+from .retrieval_ids import matches_reference, requested_references
 from .spreadsheet import _num, query_spreadsheet  # noqa: F401 - backward-compatible public import
 
 
@@ -100,6 +101,7 @@ def _keyword_search_documents(conn: sqlite3.Connection, query: str, limit: int =
     file = file.strip()
     terms = list(dict.fromkeys(re.findall(r"[\w]+", query.lower())))
     phrase = " ".join(query.casefold().split())
+    references = requested_references(query)
     if not terms:
         return {"results": []}
     found: list[dict[str, Any]] = []
@@ -119,6 +121,8 @@ def _keyword_search_documents(conn: sqlite3.Connection, query: str, limit: int =
                             "AND (? = '' OR d.path = ?) "
                             "ORDER BY d.path,p.page,p.chunk", (file, file)):
         haystack = row["text"].lower()
+        if not matches_reference(haystack, references):
+            continue
         score = sum(t in haystack for t in terms)
         # The exact phrase "contract value" must outrank a page that merely
         # contains "contract" and unrelated "values" in separate sentences.
@@ -133,6 +137,8 @@ def _keyword_search_documents(conn: sqlite3.Connection, query: str, limit: int =
                             "AND (? = '' OR d.path = ?) "
                             "ORDER BY d.path,w.ordinal", (file, file)):
         preview = f"{row['section']}: {row['text']}" if row["section"] else row["text"]
+        if not matches_reference(preview, references):
+            continue
         score = sum(t in preview.lower() for t in terms)
         if score:
             keep({"citation": _word_citation(row),
@@ -144,6 +150,8 @@ def _keyword_search_documents(conn: sqlite3.Connection, query: str, limit: int =
                             "ORDER BY d.path,s.sheet,s.row_num", (file, file)):
         cells = json.loads(row["cells_json"])
         text = " ".join(_clean(e["value"]) for e in cells.values()).lower()
+        if not matches_reference(text, references):
+            continue
         score = sum(t in text for t in terms)
         if score:
             keep({"citation": f"{row['path']} | {row['sheet']} | row {row['row_num']}",
