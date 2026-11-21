@@ -10,8 +10,9 @@ import json
 import math
 import os
 import sqlite3
+from collections.abc import Iterator
 from functools import lru_cache
-from typing import Any, Iterator
+from typing import Any
 
 DEFAULT_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 
@@ -210,8 +211,8 @@ def fuse_results(
             ranks[citation] = ranks.get(citation, 0.0) + weight / (60 + rank)
             if "semantic_similarity" in hit:
                 hits[citation]["semantic_similarity"] = hit["semantic_similarity"]
-    for citation in hits:
-        hits[citation]["fusion_score"] = round(ranks[citation], 8)
+    for citation, hit in hits.items():
+        hit["fusion_score"] = round(ranks[citation], 8)
     ordered = sorted(hits.values(),
                      key=lambda hit: (-ranks[hit["citation"]], hit["citation"]))
     return ordered[:limit]
