@@ -33,14 +33,14 @@ def demo_database() -> sqlite3.Connection:
         row["path"]: row["id"] for row in conn.execute("SELECT id,path FROM documents")
     }
     for path, page, text in (
-        ("Contract.pdf", 1, "The contractual final commissioning and handover "
-         "deadline is 31 March 2027. IFC drawings are due 20 November 2026."),
-        ("Contract.pdf", 2, "Phase 2 battery storage is a proposal only and "
-         "requires signed approval for procurement."),
-        ("CO07.pdf", 1, "Approved change order CO-07 adds 40 metres of cable tray "
-         "in Building B. The revised contract sum is SAR 7,070,000."),
-        ("QA.pdf", 1, "Circuits C-05 and C-06 require retesting. A formal final "
-         "acceptance certificate has not been issued."),
+        ("Contract.pdf", 1, ("The contractual final commissioning and handover "
+         "deadline is 31 March 2027. IFC drawings are due 20 November 2026.")),
+        ("Contract.pdf", 2, ("Phase 2 battery storage is a proposal only and "
+         "requires signed approval for procurement.")),
+        ("CO07.pdf", 1, ("Approved change order CO-07 adds 40 metres of cable tray "
+         "in Building B. The revised contract sum is SAR 7,070,000.")),
+        ("QA.pdf", 1, ("Circuits C-05 and C-06 require retesting. A formal final "
+         "acceptance certificate has not been issued.")),
     ):
         conn.execute(
             "INSERT INTO passages(document_id,page,chunk,text) VALUES(?,?,0,?)",
@@ -98,7 +98,7 @@ def read_cases(path: Path) -> list[dict[str, Any]]:
         raise ValueError("Evaluation cases must be a nonempty JSON list")
     for case in cases:
         if not isinstance(case, dict) or not isinstance(case.get("query"), str):
-            raise ValueError("Each case needs a question string under 'query'")
+            raise TypeError("Each case needs a question string under 'query'")
         citations = case.get("expected_citations")
         if not isinstance(citations, list) or not citations or not all(
             isinstance(value, str) and value for value in citations
