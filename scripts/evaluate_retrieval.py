@@ -14,6 +14,8 @@ from pathlib import Path
 from time import perf_counter
 from typing import Any
 
+from dotenv import load_dotenv
+
 from document_agent.db import connect
 from document_agent.tools import search_documents
 
@@ -175,6 +177,9 @@ def evaluate(
 
 
 def main() -> int:
+    # Match the Streamlit app: use local project settings without overwriting
+    # environment variables explicitly set by the caller or CI.
+    load_dotenv(dotenv_path=Path(".env"), override=False)
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--demo", action="store_true",
                         help="Use a generated, fictional and labeled document index")
@@ -203,6 +208,7 @@ def main() -> int:
               "reports": reports}
     rendered = json.dumps(output, indent=2, ensure_ascii=False)
     if args.output:
+        args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(rendered + "\n", encoding="utf-8")
     print(rendered)
     if any(not report["valid_for_mode"] for report in reports.values()):
