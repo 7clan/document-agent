@@ -333,10 +333,27 @@ def ingest_folder(conn: sqlite3.Connection, folder: str | Path) -> dict[str, Any
             conn.execute("DELETE FROM word_blocks WHERE document_id=?", (doc_id,))
             mark_document(conn, doc_id, "failed", f"{type(exc).__name__}: {exc}")
             reports.append({"file": relative, "status": "failed", "error": str(exc)})
-    return {
+    # Hybrid embeddings are optional. Extraction succeeds even if a local model
+    # is not installed; searches then continue to use the keyword baseline.
+    embedding_report = None
+    if os.getenv("DOCUMENT_AGENT_RETRIEVAL_MODE", "keyword").lower() == "hybrid":
+        try:
+            from .hybrid import sync_embeddings
+
+            embedding_report = sync_embeddings(conn)
+            embedding_report["status"] = "ready"
+        except Exception as exc:  # noqa: BLE001 - optional model failure is recoverable
+            embedding_report = {
+                "status": "keyword_fallback",
+                "warning": f"Local embeddings unavailable ({type(exc).__name__}).",
+            }
+    result = {
         "indexed": sum(r["status"] == "ready" for r in reports),
         "skipped": sum(r["status"] == "skipped" for r in reports),
         "failed": sum(r["status"] == "failed" for r in reports),
         "files": reports,
         "error": "No supported documents found" if not reports else None,
     }
+    if embedding_report is not None:
+        result["embedding_index"] = embedding_report
+    return result

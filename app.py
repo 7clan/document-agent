@@ -1,4 +1,4 @@
-"""Minimal Streamlit front-end for a live 30-minute technical review."""
+"""Streamlit interface for the independent document intelligence agent."""
 from __future__ import annotations
 
 import csv
@@ -34,6 +34,9 @@ def _cached_model_catalog(provider: str, key_fingerprint: str,
 st.set_page_config(page_title="Document Intelligence Agent", page_icon="📄", layout="wide")
 st.title("Project Document Agent")
 st.caption("PDFs + Excel + Word · Evidence-grounded answers · Read-only tool calling")
+st.caption("Retrieval configuration: " +
+           os.getenv("DOCUMENT_AGENT_RETRIEVAL_MODE", "keyword").strip().lower() +
+           " (hybrid requires an installed local embedding model)")
 conn = connect(os.getenv("DOCUMENT_AGENT_DB_PATH", ".local/document_index.db"))
 PROVIDERS = {
     "gemini": ("Google Gemini", "GEMINI_API_KEY", "GEMINI_MODEL", "gemini-2.5-flash"),
