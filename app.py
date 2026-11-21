@@ -1,4 +1,4 @@
-"""Streamlit interface for the independent document intelligence agent."""
+"""Streamlit interface for Document Agent."""
 from __future__ import annotations
 
 import csv

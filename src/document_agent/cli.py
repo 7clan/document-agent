@@ -15,7 +15,7 @@ from .tools import extract_dates, list_documents, query_spreadsheet
 
 def main() -> None:
     load_dotenv()
-    parser = argparse.ArgumentParser(description="Source-grounded document intelligence agent")
+    parser = argparse.ArgumentParser(description="Source-grounded Document Agent")
     commands = parser.add_subparsers(dest="command", required=True)
     add = commands.add_parser("ingest", help="Index PDF, Word and Excel documents from a folder")
     add.add_argument("folder")

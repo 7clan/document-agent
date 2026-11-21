@@ -515,7 +515,7 @@ or real company files in a GitHub repository or shared archive. To create an all
 python scripts/package_submission.py
 ```
 
-The output is `.local/submission/document-intelligence-agent.zip`. Its contents are checked by an
+The output is `.local/submission/document-agent.zip`. Its contents are checked by an
 offline test. Inspect the archive yourself before sharing it; this command does not rotate keys.
 
 ## References
