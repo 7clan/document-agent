@@ -2,9 +2,9 @@
 import json
 
 from document_agent import hybrid
-from document_agent.agent import _retrieval_audit
+from document_agent.agent import _execute, _retrieval_audit
 from document_agent.db import connect
-from document_agent.tools import get_evidence, search_documents
+from document_agent.tools import TOOL_SCHEMAS, get_evidence, search_documents
 
 
 class FakeEncoder:
@@ -53,6 +53,24 @@ def test_semantic_paraphrase_and_original_evidence(monkeypatch):
     citation = "Contract.pdf | page 1 | chunk 0"
     assert any(hit["citation"] == citation for hit in answer["results"])
     assert "June 15" in str(get_evidence(conn, citation))
+
+
+def test_agent_search_uses_configured_mode_even_if_model_requests_another(monkeypatch):
+    conn = seed()
+    monkeypatch.setattr(hybrid, "embedding_model", FakeEncoder)
+    schema = next(tool for tool in TOOL_SCHEMAS if tool["name"] == "search_documents")
+    assert "mode" not in schema["parameters"]["properties"]
+
+    monkeypatch.setenv("DOCUMENT_AGENT_RETRIEVAL_MODE", "hybrid")
+    result = _execute(conn, "search_documents", {"query": "completion deadline",
+                                                  "mode": "keyword"})
+    assert result["retrieval_mode"] == "hybrid"
+    assert result["semantic_matches"] > 0
+
+    monkeypatch.setenv("DOCUMENT_AGENT_RETRIEVAL_MODE", "keyword")
+    result = _execute(conn, "search_documents", {"query": "completion deadline",
+                                                  "mode": "hybrid"})
+    assert result.get("retrieval_mode", "keyword") == "keyword"
 
 
 def test_incremental_updates_and_deletion():

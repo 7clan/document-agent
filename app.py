@@ -31,8 +31,8 @@ def _cached_model_catalog(provider: str, key_fingerprint: str,
     return model_catalog.discover_models(provider, _api_key)
 
 
-st.set_page_config(page_title="Document Intelligence Agent", page_icon="📄", layout="wide")
-st.title("Project Document Agent")
+st.set_page_config(page_title="Document Agent", page_icon="📄", layout="wide")
+st.title("Document Agent")
 st.caption("PDFs + Excel + Word · Evidence-grounded answers · Read-only tool calling")
 st.caption("Configured retrieval: " +
            os.getenv("DOCUMENT_AGENT_RETRIEVAL_MODE", "keyword").strip().lower() +
@@ -388,7 +388,7 @@ if "last_answer" in st.session_state:
         else:
             evidence = detail["evidence"]
             if "row" in evidence:
-                st.table([{"Cell": column, "Indexed value": value}
+                st.table([{"Cell": column, "Indexed value": str(value)}
                           for column, value in evidence["row"].items()])
                 if "value" in evidence:
                     st.caption("Cited cell value: " + str(evidence["value"].get("value")))

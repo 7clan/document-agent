@@ -1,4 +1,4 @@
-# Document Intelligence Agent AI Coding Agent Development Note (optional development log)
+# Document Agent AI Coding Agent Development Note (optional development log)
 
 **Coding agent used:** OpenAI Codex inside VS Code (change if actual setup differs).
 

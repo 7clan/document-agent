@@ -1,4 +1,4 @@
-# Document Intelligence Agent
+# Document Agent
 
 Independent, source-grounded document analysis for PDF, Excel, and Word. **Hybrid keyword + local semantic retrieval is available as an opt-in mode.** The default remains keyword search unless configured otherwise. See [hybrid implementation notes](docs/HYBRID_RETRIEVAL_PLAN.md).
 
@@ -405,9 +405,11 @@ indexes also receive embeddings lazily on the first hybrid search. SQLite
 stores vectors with source citations and content fingerprints; unchanged
 passages are reused while changed or removed sources are updated.
 
-To restore the previous behavior, set `DOCUMENT_AGENT_RETRIEVAL_MODE=keyword`
-(or call `search_documents` with `mode="keyword"`). An explicit
-`mode="hybrid"` argument is also available to the agent tool.
+To restore the previous behavior in the app, set
+`DOCUMENT_AGENT_RETRIEVAL_MODE=keyword`. The app uses this setting for agent
+searches; the LLM cannot override it. Direct Python calls to
+`search_documents` can still pass `mode="keyword"` or `mode="hybrid"` for
+evaluation and diagnostics.
 
 **Validation:** CI runs offline tests with a deterministic fake embedding
 model for indexing, filtering, fallback and fusion. This does *not* establish

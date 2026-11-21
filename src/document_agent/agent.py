@@ -158,7 +158,11 @@ def _execute(conn: sqlite3.Connection, name: str, args: dict[str, Any]) -> dict[
         return {"error": f"Unknown function {name}"}
     try:
         # Explicit allowlist dispatch. No SQL or Python execution from the model.
-        output = TOOLS[name](conn, **args)
+        effective_args = dict(args)
+        if name == "search_documents":
+            # Retrieval mode is an application setting, not a model decision.
+            effective_args["mode"] = os.getenv("DOCUMENT_AGENT_RETRIEVAL_MODE", "keyword")
+        output = TOOLS[name](conn, **effective_args)
         return output if isinstance(output, dict) else {"result": output}
     except (TypeError, ValueError, KeyError) as exc:
         return {"error": f"Invalid tool arguments: {exc}"}

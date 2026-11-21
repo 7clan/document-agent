@@ -1,8 +1,9 @@
 # Hybrid retrieval — v1 implementation and remaining work
 
-**Status: implemented as an optional local mode.** The `search_documents` tool supports
-`mode="keyword"` and `mode="hybrid"`; `DOCUMENT_AGENT_RETRIEVAL_MODE`
-controls the default. The existing `semantic_verifier.py` is about answer
+**Status: implemented as an optional local mode.** Direct Python calls to
+`search_documents` support `mode="keyword"` and `mode="hybrid"`;
+`DOCUMENT_AGENT_RETRIEVAL_MODE` controls searches made by the agent. The
+existing `semantic_verifier.py` is about answer
 validation, not retrieval.
 
 ## Implemented
@@ -17,9 +18,10 @@ validation, not retrieval.
 3. **Retrieval:** PDF page chunks, Word blocks and Excel rows are independently embedded.
    Semantic top-k is merged with lexical top-k using reciprocal rank fusion, with a
    2:1 weight favoring lexical matches. File filters remain enforced.
-4. **Agent integration:** The existing `search_documents` tool exposes optional
-   retrieval `mode` and returns the same source citations; `get_evidence` still resolves
-   the original indexed text or structured cells.
+4. **Agent integration:** The existing `search_documents` tool uses the
+   configured retrieval mode and returns the same source citations; the model
+   does not choose the mode. `get_evidence` still resolves the original indexed
+   text or structured cells.
 5. **Resilience:** If optional dependencies, weights or encoding fail, the search
    falls back to the keyword baseline and reports `retrieval_warning`.
 6. **Tests:** Offline deterministic fake-model tests cover paraphrase matching,

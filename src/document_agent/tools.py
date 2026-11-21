@@ -379,8 +379,8 @@ TOOL_SCHEMAS = [
      "parameters": {"type": "object", "properties": {}}},
     {"name": "inspect_document", "description": "Inspect a document. Excel previews include exact row citations such as File.xlsx | Sheet | row 2; copy one exactly for get_evidence or a claim. Call before ambiguous spreadsheet queries.",
      "parameters": {"type": "object", "properties": {"file": {"type": "string"}}, "required": ["file"]}},
-    {"name": "search_documents", "description": "Search PDF, Word and Excel source records. Optional mode=hybrid combines exact keyword matching with locally cached semantic embeddings, with keyword fallback if unavailable. Use file to restrict results. Returns original source citations.",
-     "parameters": {"type": "object", "properties": {"query": {"type": "string"}, "limit": {"type": "integer"}, "file": {"type": "string"}, "mode": {"type": "string", "enum": ["keyword", "hybrid"]}}, "required": ["query"]}},
+    {"name": "search_documents", "description": "Search PDF, Word and Excel source records using the application's configured retrieval mode. Use file to restrict results. Returns original source citations.",
+     "parameters": {"type": "object", "properties": {"query": {"type": "string"}, "limit": {"type": "integer"}, "file": {"type": "string"}}, "required": ["query"]}},
     {"name": "query_spreadsheet", "description": "Run READ-ONLY financial BOQ amount queries, not general milestone or schedule lookup. Set operator='all' with no value to list/sum all BOQ rows; provide value for gt/gte/lt/lte/eq comparisons. Return exact source cells and warnings. Paginate with offset.",
      "parameters": {"type": "object", "properties": {
          "column_hint": {"type": "string"}, "operator": {"type": "string", "enum": ["gt","gte","lt","lte","eq","all"]},
