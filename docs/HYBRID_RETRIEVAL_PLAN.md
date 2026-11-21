@@ -35,6 +35,26 @@ enable `DOCUMENT_AGENT_RETRIEVAL_MODE=hybrid` in local `.env`.
 Opt in to the model download once if needed by setting
 `DOCUMENT_AGENT_EMBEDDING_ALLOW_DOWNLOAD=1`; restore `0` for offline use.
 
+## Measured fictional retrieval benchmark (21 November 2026)
+
+A real local `sentence-transformers/all-MiniLM-L6-v2` embedding model was
+downloaded and tested in GitHub Actions. On **14 manually labeled fictional
+queries**, including six harder paraphrases, with the top-three cutoff:
+
+| Measure | Keyword only | Hybrid |
+|---|---:|---:|
+| Hit@3 / mean Recall@3 | 0.9286 (13/14) | 1.0000 (14/14) |
+| MRR@3 | 0.8571 | 0.9643 |
+| Semantic fallback | Not applicable | 0 queries |
+
+This demonstrates a limited retrieval improvement on the test fixture;
+it **does not establish answer accuracy**, performance on unknown real documents,
+or statistically reliable generalization. See the
+[real-model workflow run](https://github.com/7clan/document-agent/actions/runs/44930561640)
+and its saved report for the exact questions, expected citations and ranks.
+The benchmark CLI also supports a separate local indexed corpus with
+independently labeled `expected_citations`.
+
 ## Limitations and future improvements
 
 - **Not a real-model benchmark:** Fake-vector tests validate integration, not semantic
@@ -43,9 +63,11 @@ Opt in to the model download once if needed by setting
 - **Scalability:** SQLite stores vectors as JSON, and the initial semantic
   implementation performs a linear cosine scan. Migrate to an ANN/vector
   extension for very large corpora after profiling real workloads.
-- **Exact IDs:** The keyword candidate set and weighted fusion help preserve
-  exact matches, but this is not an absolute guarantee. Test item IDs,
-  filenames, dates, currencies and product identifiers carefully.
+- **Exact IDs:** Whole structured identifiers such as `EL-103` and `EL-1030`
+  are now distinguished in both keyword and semantic results. However, strict
+  reference filtering can omit related records that do not repeat the ID;
+  issue a separate, broader question when cross-document context is needed.
+  More evaluation is required for unusual PDF hyphens and broken OCR text.
 - **Multilingual:** The default all-MiniLM-L6-v2 model is primarily English.
   Choose and evaluate a multilingual embedding model for cross-language retrieval.
 - **Revision tracking:** Pin `DOCUMENT_AGENT_EMBEDDING_REVISION` for reproducible
