@@ -24,7 +24,7 @@ jobs:
           DOCUMENT_AGENT_EMBEDDING_ALLOW_DOWNLOAD: '1'
           DOCUMENT_AGENT_EMBEDDING_MODEL: sentence-transformers/all-MiniLM-L6-v2
         run: |
-          python scripts/evaluate_retrieval.py --demo --mode both --k 5 --output retrieval_demo_report.json
+          python scripts/evaluate_retrieval.py --demo --mode both --k 3 --output retrieval_demo_report.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:
