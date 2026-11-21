@@ -1,25 +1,62 @@
-# Hybrid retrieval — implementation plan
+# Hybrid retrieval — v1 implementation and remaining work
 
-**Status: planned, not implemented.** The current `search_documents` tool in `src/document_agent/tools.py` uses bounded lexical keyword matching. The existing `semantic_verifier.py` concerns answer verification; it is **not** a vector retrieval engine.
+**Status: implemented as an optional local mode.** The `search_documents` tool supports
+`mode="keyword"` and `mode="hybrid"`; `DOCUMENT_AGENT_RETRIEVAL_MODE`
+controls the default. The existing `semantic_verifier.py` is about answer
+validation, not retrieval.
 
-## Objective
-Improve discovery of evidence when a question paraphrases a source document, while preserving exact-match search for item IDs, costs, filenames, and dates. Keep all displayed citations linked to the original indexed PDF, Word block, or worksheet row.
+## Implemented
 
-## Implementation stages
-1. **Baseline tests**: Create a small held-out corpus of invented contracts and BOQs. Record retrieval recall@k for exact wording, synonyms, paraphrases, different document types and exact item codes before changing search.
-2. **Optional embeddings**: Introduce a configurable, locally runnable embedding provider with a pinned model ID and dimensions. Embed normalized, citation-bearing passages, Word blocks, and carefully selected textual representations of worksheet rows. Avoid sending confidential files to hosted embedding APIs without authorization.
-3. **Incremental index**: Store embeddings keyed by a stable source-record identifier/citation, content fingerprint, embedding model/version and vector dimension. Rebuild when content or model changes; remove deleted records. Keep the lexical database usable without embedding dependencies.
-4. **Search and rank fusion**: Retrieve bounded top-k lexical and vector candidates, merge by exact citation and fuse ranks using reciprocal rank fusion (RRF) or an equally transparent method. Preserve strong exact-code matches; expose the retrieval mode and search evidence for auditing. A single index must not silently merge incompatible vector models.
-5. **Agent integration**: Keep the existing `search_documents` contract and source citations stable where practical. Route evidence through existing `get_evidence` and citation checks. Do not let embedding similarity count as evidence of a numerical fact or final answer correctness.
-6. **Tests and fallback**: Validate exact identifiers, cross-document ambiguity, numeric BOQ queries, citations, empty or corrupt documents, missing embeddings, provider failures, deleted/reindexed documents and reproducible ranking. Fall back to lexical search when embeddings are unavailable, with a visible notice.
+1. **Local embeddings:** Optional `sentence-transformers` dependency with a configurable
+   model ID and optional revision. Model downloads require an explicit opt-in;
+   document contents are embedded locally rather than sent to a remote embedding API.
+2. **Citation-based cache:** `source_embeddings` in SQLite contains document foreign
+   keys, exact source citations, content SHA-256 fingerprints, embedding-model identity,
+   dimensionality and normalized vectors. Deleting/reindexing a document removes its
+   stale vectors; unchanged records are reused.
+3. **Retrieval:** PDF page chunks, Word blocks and Excel rows are independently embedded.
+   Semantic top-k is merged with lexical top-k using reciprocal rank fusion, with a
+   2:1 weight favoring lexical matches. File filters remain enforced.
+4. **Agent integration:** The existing `search_documents` tool exposes optional
+   retrieval `mode` and returns the same source citations; `get_evidence` still resolves
+   the original indexed text or structured cells.
+5. **Resilience:** If optional dependencies, weights or encoding fail, the search
+   falls back to the keyword baseline and reports `retrieval_warning`.
+6. **Tests:** Offline deterministic fake-model tests cover paraphrase matching,
+   duplicate elimination, incremental index updates, document deletion, file
+   scoping, and missing-model fallback. The existing project regression suite
+   tests the original parsing, evidence and numeric behavior.
 
-## Suggested sequence for small, reviewable PRs
-- PR 1: embedding interface + storage/migration + offline unit tests.
-- PR 2: semantic retriever with fixed examples + deterministic fusion tests.
-- PR 3: tool integration, configuration, UI indication + held-out evaluation.
+## Setup
 
-## Guardrails
-- BOQ totals still come from `query_spreadsheet` and `Decimal`, never vector similarity.
-- The semantic search score helps **find candidate evidence**; it does not verify that evidence supports a claim.
-- No generated SQL, shell commands or code execution by the LLM.
-- Report measured retrieval metrics only after actually running the tests.
+See [README](../README.md#hybrid-retrieval-optional-local).
+Install the optional dependency with `pip install -e ".[embeddings]"` and
+enable `DOCUMENT_AGENT_RETRIEVAL_MODE=hybrid` in local `.env`.
+Opt in to the model download once if needed by setting
+`DOCUMENT_AGENT_EMBEDDING_ALLOW_DOWNLOAD=1`; restore `0` for offline use.
+
+## Limitations and future improvements
+
+- **Not a real-model benchmark:** Fake-vector tests validate integration, not semantic
+  search quality. Measure recall@k and ranking quality with a labeled, unseen
+  collection before claiming improved accuracy.
+- **Scalability:** SQLite stores vectors as JSON, and the initial semantic
+  implementation performs a linear cosine scan. Migrate to an ANN/vector
+  extension for very large corpora after profiling real workloads.
+- **Exact IDs:** The keyword candidate set and weighted fusion help preserve
+  exact matches, but this is not an absolute guarantee. Test item IDs,
+  filenames, dates, currencies and product identifiers carefully.
+- **Multilingual:** The default all-MiniLM-L6-v2 model is primarily English.
+  Choose and evaluate a multilingual embedding model for cross-language retrieval.
+- **Revision tracking:** Pin `DOCUMENT_AGENT_EMBEDDING_REVISION` for reproducible
+  cache identity when using downloadable models.
+- **Relevance is not truth:** Semantic similarity is only a search heuristic;
+  verify source context, amounts, and interpretive claims independently.
+
+## Engineering constraints
+
+- The LLM can call only the declared read-only tools. It cannot execute arbitrary SQL.
+- BOQ filtering and totals stay in `spreadsheet.py` using deterministic logic
+  and `Decimal`, not embedding similarity or LLM arithmetic.
+- `get_evidence` continues resolving exact source records; model-derived
+  vectors are not source evidence.
