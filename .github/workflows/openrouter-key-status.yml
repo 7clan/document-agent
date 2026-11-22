@@ -1,0 +1,27 @@
+name: OpenRouter API key limit diagnostic (no model calls)
+
+on:
+  push:
+    branches:
+      - feature/bounded-self-recovery
+    paths:
+      - scripts/check_openrouter_key.py
+      - .github/workflows/openrouter-key-status.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  key-limit-readonly:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY || secrets.OPEN_ROUTER_API_KEY || secrets.OPENROUTER_KEY || secrets.OPENROUTER }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Read only current key cap metadata (no model billing)
+        run: python scripts/check_openrouter_key.py
