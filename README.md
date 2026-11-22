@@ -566,3 +566,36 @@ offline test. Inspect the archive yourself before sharing it; this command does 
 The application is maintained in this repository. Git history preserves the initial project
 version; the source-only archive script is optional. Keep credentials, real documents and
 local SQLite indexes out of any shared release.
+
+### Record the real Streamlit interview (no mocked model responses)
+
+The optional [live browser recorder](scripts/record_live_interview.py) launches the
+actual Streamlit application, generates a fictional source-document folder, indexes it
+in the browser, asks six questions, and records the entire Chromium session. Two
+questions require real Gemini tool calls; the other four exercise deterministic
+exact-item or corrupted-document safeguards. The recording report includes every
+observed answer and whether the provider-backed questions completed.
+
+A real `GEMINI_API_KEY` is required in your private, Git-ignored `.env` or process
+environment. The recorder exits without inventing a video if it is missing.
+
+On a computer with Chromium dependencies:
+
+```powershell
+python -m pip install -e ".[dev]" playwright
+python -m playwright install chromium
+python scripts/record_live_interview.py
+```
+
+Artifacts are written under `.local/release_browser_recordings/<UTC timestamp>/`:
+the uncut video, `recording_results.json`, and the fictional documents used.
+The report sets `recording_verified` to true **only** if all six questions completed
+and at least two actual provider-backed questions returned answers. A successful
+video capture is not proof that every substantive model claim is true; original
+sources still need review.
+
+The optional GitHub Actions workflow *Real model browser recording* attempts the
+same procedure when the repository securely has an Actions secret named
+`GEMINI_API_KEY`. It intentionally skips the live recording when no secret is
+configured, and never stores API keys in workflow files or video metadata.
+Do not describe a skipped run as a completed model evaluation.
