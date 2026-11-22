@@ -1,7 +1,18 @@
 name: Gemma citation recovery targeted regression
 
 on:
+  push:
+    branches:
+      - feature/bounded-self-recovery
+    paths:
+      - evaluation/TRIGGER_GEMMA_CITATION.txt
   workflow_dispatch:
+
+# All provider-backed acceptance runs share a queue. Do not run two batches
+# concurrently against the same account or spend budget.
+concurrency:
+  group: document-agent-paid-acceptance
+  cancel-in-progress: false
 
 permissions:
   contents: read
