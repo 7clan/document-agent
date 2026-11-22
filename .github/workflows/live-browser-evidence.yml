@@ -29,21 +29,28 @@ jobs:
           else
             echo "A provider key is configured. Attempting real model calls."
           fi
-      - name: Install actual app and Chromium
-        if: env.GEMINI_API_KEY != ''
+      - name: Install agent and validate Gemini API key against actual model
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -e '.[dev]' playwright
+          python -m pip install -e '.[dev]'
+          python scripts/validate_gemini.py
+      - name: Install Chromium only when provider authentication succeeds
+        run: |
+          python -m pip install playwright
           python -m playwright install --with-deps chromium
       - name: Record genuine Streamlit interactions
-        if: env.GEMINI_API_KEY != ''
+        id: record
         run: |
           python scripts/record_live_interview.py
       - name: Upload actual browser recording and measured responses
-        if: always() && env.GEMINI_API_KEY != ''
+        if: always() && steps.record.outcome != 'skipped'
         uses: actions/upload-artifact@v4
         with:
           name: document-agent-live-browser-evidence
-          path: .local/release_browser_recordings/
+          path: |
+            .local/release_browser_recordings/**/recording_results.json
+            .local/release_browser_recordings/**/uncut_browser_recording.webm
+            .local/release_browser_recordings/**/uncut_browser_recording.mp4
+            .local/release_browser_recordings/**/raw_video/*.webm
           if-no-files-found: warn
           retention-days: 7
