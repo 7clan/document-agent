@@ -1,11 +1,6 @@
 name: Frozen 44-question Gemma hybrid retrieval A/B
 
 on:
-  push:
-    branches:
-      - feature/bounded-self-recovery
-    paths:
-      - .github/workflows/frozen-gemma-hybrid.yml
   workflow_dispatch:
 
 permissions:
