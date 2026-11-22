@@ -86,6 +86,58 @@ It does **not** overwrite the historical pre-fix assessment
 8. Workflows only access provider keys through encrypted repository secrets.
    Test output contains only fictitious source documents and measured answers.
 
+## Follow-up: account limits and evaluator integrity
+
+The user's OpenRouter Activity view reports about **$0.10 spent across 409
+requests** over the prior month. This does **not** establish the remaining
+credit balance, nor is all historical usage attributable to this project.
+
+A direct **read-only GET /api/v1/key**, executed by
+[GitHub Actions](https://github.com/7clan/document-agent/actions/runs/45071104326),
+authenticated successfully and reported **no configured key spending cap**.
+It made **zero inference calls** and printed no key, account identifiers, exact
+balance or raw response. Thus the earlier **HTTP 402** was not explained by a
+configured per-key limit; likely remaining causes include account credits or an
+in-flight spending budget. The endpoint does not expose the account credit
+balance; this is still **unconfirmed**.
+
+The previous release replay tracked a misleading boolean: Python's
+`all([])` returned true for an answer with no citations. The replay reporter
+now separates:
+
+- `answers_with_citations` — actual nonempty source lists;
+- `verified_source_citations` — cited cases for which every cited source
+  resolves (never counts an empty list);
+- `answers_without_citations` — answered/abstained cases with no source list;
+- `expected_sources_covered` — labels covered by cited locations, **not**
+  an answer-accuracy score;
+- `provider_http_402` and `provider_http_429` — external access errors,
+  never counted as factual reasoning mistakes.
+
+The historical artifacts are preserved unchanged; revised metrics apply to
+future replay reports. The agent's provider diagnostic now records only
+**allowlisted** OpenRouter `error.metadata.limit_source` categories when
+present, excluding keys, prompts, URLs, full response bodies, account IDs and
+other sensitive metadata. No additional paid provider requests were made.
+
+**Controlled acceptance invocation before merge:** GitHub only exposes
+`workflow_dispatch` UI triggering for workflows present on the default
+branch. To run an expensive benchmark on this draft feature branch, make a
+deliberate commit that **adds or edits only** its respective trigger file:
+
+| Evaluation | Trigger path |
+|---|---|
+| Native Gemini 44 | `evaluation/TRIGGER_GEMINI_44.txt` |
+| OpenRouter Gemma 44 (keyword) | `evaluation/TRIGGER_GEMMA_44.txt` |
+| OpenRouter Gemma 44 (hybrid) | `evaluation/TRIGGER_GEMMA_HYBRID_44.txt` |
+| Targeted Gemma citation cases | `evaluation/TRIGGER_GEMMA_CITATION.txt` |
+
+These paths are **not created by this change**; routine code commits do not
+match them. All paid acceptance workflows share a concurrency group so two
+benchmarks cannot run simultaneously. The benchmark itself stops on its first
+HTTP 402 or two consecutive HTTP 429 responses, minimizing unnecessary calls.
+Do not trigger a new paid test without first establishing usable account quota.
+
 ## Merge decision
 
 **NOT MERGED; DRAFT.** Security, Linux and Windows CI, real hybrid retrieval,
