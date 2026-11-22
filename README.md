@@ -599,3 +599,58 @@ same procedure when the repository securely has an Actions secret named
 `GEMINI_API_KEY`. It intentionally skips the live recording when no secret is
 configured, and never stores API keys in workflow files or video metadata.
 Do not describe a skipped run as a completed model evaluation.
+
+### Verified providers and release checks — 22 November 2026
+
+**Google Gemini 2.5 Flash:** Validated with a genuine API text-generation request,
+all six declared document tools and the actual document agent. The six-question
+uncut browser recording passed with two model-backed questions and four Python
+safety checks. [Browser evidence](https://github.com/7clan/document-agent/actions/runs/45060267223).
+
+**Google Gemma 4 31B through OpenRouter:** The project's existing `compatible`
+provider has been tested with real OpenRouter Chat Completions requests. Two
+model questions used native tool calls, returned exact original-source
+citations, and the deterministic BOQ threshold test completed.
+[Gemma evidence](https://github.com/7clan/document-agent/actions/runs/45062669060).
+OpenRouter credentials are never hardcoded and are distinct from Gemini credentials.
+
+For Gemma 4 through OpenRouter, install with `pip install -e '.[openai,dev]'`
+and set these in your **private**, ignored `.env` (values are examples, not a key):
+
+```dotenv
+LLM_PROVIDER=compatible
+COMPATIBLE_BASE_URL=https://openrouter.ai/api/v1
+COMPATIBLE_MODEL=google/gemma-4-31b-it
+COMPATIBLE_API_KEY=your_own_openrouter_key
+```
+
+For Gemini, use `LLM_PROVIDER=gemini` and provide `GEMINI_API_KEY` in your
+private `.env`. No provider key belongs in Git, sample documents, saved video,
+logs, or source-only archives. The optional GitHub workflows read corresponding
+**Actions repository secrets**, with only the raw key as the secret value.
+
+**Hybrid retrieval:** The genuine on-runner MiniLM model (not a mock) achieved
+Hit@5 37/40 (92.5%), versus keyword-only 35/40 (87.5%), with zero fallbacks.
+Three real Gemini questions also exercised the hybrid path.
+[Hybrid evidence](https://github.com/7clan/document-agent/actions/runs/45062311080).
+
+**Dependency safety:** The Windows dependency snapshot now pins Pillow 13.0.0
+and Streamlit 1.67.0. The Python 3.11 CI audit checked the installed runtime and
+the Windows pinned list with `pip-audit`, finding no listed vulnerabilities,
+and `pip check` found no broken requirements.
+[Audit evidence](https://github.com/7clan/document-agent/actions/runs/45062802160).
+A clean Windows 3.12 installation remains the definitive compatibility check
+for that platform; the Linux dependency audit alone cannot certify a Windows runtime.
+
+**44-question full evaluation:** A separate unchanged-label benchmark runs
+through production `ask()`, records every actual answer, citation, tool-use event
+and provider error, and uploads a JSON transcript. Short demo success should not
+be confused with this complete acceptance measure. Gemini 2.5 Flash hit API
+HTTP 429 limits during the attempted full batch; the evaluator now stops after
+two consecutive quota failures rather than repeatedly sending requests. A
+Gemma OpenRouter replay is also available to test the full set with a separate
+provider. Sources may resolve correctly while claims are still semantically
+wrong; independent source reading remains required before release.
+
+A successful smoke test does **not** automatically authorize merging a draft PR.
+
