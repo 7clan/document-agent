@@ -102,6 +102,7 @@ def main() -> int:
             question_box = page.get_by_role(
                 "textbox", name="Ask a question about the indexed documents"
             )
+            previous_question = None
             for category, question, needs_model in QUESTIONS:
                 if needs_model:
                     report["live_provider_cases"] += 1
@@ -109,15 +110,23 @@ def main() -> int:
                 # Streamlit text_area keeps edits pending until Ctrl+Enter or blur.
                 # A click on a disabled Ask button does not commit pending edits.
                 question_box.press("Control+Enter")
+                if previous_question is not None:
+                    # Wait for the previous Streamlit response to disappear before
+                    # clicking; otherwise a stale response can pass the wait gate.
+                    page.wait_for_function(
+                        """prior => !document.body.innerText.includes('Answered question: ' + prior)
+                          && !document.body.innerText.includes('Failed question: ' + prior)""",
+                        arg=previous_question, timeout=15000,
+                    )
                 ask_button = page.get_by_role("button", name="Ask agent")
                 expect(ask_button).to_be_enabled(timeout=15000)
                 ask_button.click()
                 try:
                     # An API failure is a measured failure, not a 130-second timeout.
                     page.wait_for_function(
-                        """() => document.body.innerText.includes('Answer status:')
-                          || document.body.innerText.includes('Provider diagnostic (status, code, request phase only)')""",
-                        timeout=130000,
+                        """question => document.body.innerText.includes('Answered question: ' + question)
+                          || document.body.innerText.includes('Failed question: ' + question)""",
+                        arg=question, timeout=130000,
                     )
                     page.wait_for_timeout(600)
                     body = page.locator("body").inner_text()
@@ -150,6 +159,7 @@ def main() -> int:
                         "needs_live_provider": needs_model,
                         "completed": False, "error_type": type(exc).__name__,
                     })
+                previous_question = question
                 page.wait_for_timeout(750)
             video = page.video
             context.close()
