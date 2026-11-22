@@ -82,7 +82,7 @@ def main() -> int:
     }
     conn = connect(args.output / "evaluation.db")
     try:
-        ingestion = ingest_folder(conn, str(corpus))
+        ingest_folder(conn, str(corpus))
         files = [dict(row) for row in conn.execute(
             "SELECT path,kind,status,error FROM documents ORDER BY path")]
         if sum(item["status"] == "ready" for item in files) != 8:
