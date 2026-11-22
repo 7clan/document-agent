@@ -192,10 +192,18 @@ def main() -> int:
                 f"elapsed_s={entry['elapsed_seconds']}",
                 flush=True,
             )
-            if rate_limited_in_a_row >= 2:
-                report["stopped_early"] = "Provider HTTP 429 quota reached twice consecutively; further requests suppressed."
+            if entry.get("provider_error", {}).get("http_status") == 402:
+                report["stopped_early"] = ("Provider HTTP 402 billing or access restriction; "
+                                           "remaining model requests intentionally skipped.")
                 save()
-                print("Provider quota exhausted: stopping safely after two consecutive 429s.", flush=True)
+                print("Provider billing restriction HTTP 402: stopping safely.", flush=True)
+                break
+            if rate_limited_in_a_row >= 2:
+                report["stopped_early"] = ("Provider HTTP 429 quota reached twice "
+                                           "consecutively; further requests suppressed.")
+                save()
+                print("Provider quota exhausted: stopping safely after two consecutive 429s.",
+                      flush=True)
                 break
             if i < len(cases):
                 time.sleep(max(0.0, args.delay))
