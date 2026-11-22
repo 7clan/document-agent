@@ -1,0 +1,35 @@
+name: Gemini provider compatibility diagnostics
+
+on:
+  push:
+    branches:
+      - feature/bounded-self-recovery
+    paths:
+      - scripts/diagnose_gemini.py
+      - .github/workflows/gemini-provider-smoke.yml
+  workflow_dispatch:
+
+jobs:
+  diagnostics:
+    runs-on: ubuntu-latest
+    env:
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      GEMINI_MODEL: gemini-2.5-flash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Require configured provider key
+        run: |
+          if [ -z "$GEMINI_API_KEY" ]; then
+            echo "Gemini secret not available"
+            exit 1
+          fi
+      - name: Install real document agent
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e '.[dev]'
+      - name: Execute real Gemini requests and record sanitized compatibility errors
+        run: |
+          python scripts/diagnose_gemini.py
