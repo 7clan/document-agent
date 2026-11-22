@@ -1,0 +1,48 @@
+name: Real model browser recording
+
+on:
+  push:
+    branches:
+      - feature/bounded-self-recovery
+    paths:
+      - scripts/record_live_interview.py
+      - .github/workflows/live-browser-evidence.yml
+  workflow_dispatch:
+
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    env:
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      GEMINI_MODEL: gemini-2.5-flash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Check for securely configured provider credentials
+        run: |
+          if [ -z "$GEMINI_API_KEY" ]; then
+            echo "LIVE MODEL BLOCKED: repository secret GEMINI_API_KEY is missing."
+            echo "No recording will be presented as a live-model test."
+          else
+            echo "A provider key is configured. Attempting real model calls."
+          fi
+      - name: Install actual app and Chromium
+        if: env.GEMINI_API_KEY != ''
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e '.[dev]' playwright
+          python -m playwright install --with-deps chromium
+      - name: Record genuine Streamlit interactions
+        if: env.GEMINI_API_KEY != ''
+        run: |
+          python scripts/record_live_interview.py
+      - name: Upload actual browser recording and measured responses
+        if: always() && env.GEMINI_API_KEY != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: document-agent-live-browser-evidence
+          path: .local/release_browser_recordings/
+          if-no-files-found: warn
+          retention-days: 7
