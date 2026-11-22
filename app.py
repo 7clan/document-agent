@@ -329,6 +329,7 @@ if st.button("Ask agent", disabled=not question.strip() or not ready_to_ask or
         except Exception as exc:  # noqa: BLE001 - show provider errors in the UI
             st.session_state.pop("last_answer", None)
             st.error(safe_provider_error(exc, provider))
+            st.caption("Failed question: " + question)
             st.caption("Provider diagnostic (status, code, request phase only)")
             st.json(provider_error_diagnostic(exc))
         else:
@@ -338,6 +339,7 @@ if st.button("Ask agent", disabled=not question.strip() or not ready_to_ask or
 
 if "last_answer" in st.session_state:
     answer = st.session_state["last_answer"]
+    st.caption("Answered question: " + st.session_state.get("_answer_for_question", question))
     searches = [call for call in answer.tool_calls
                 if call.get("name") == "search_documents" and call.get("ok")]
     hybrid_searches = [call for call in searches if call.get("retrieval_mode") == "hybrid"]
