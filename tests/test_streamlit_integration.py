@@ -170,5 +170,7 @@ def test_streamlit_indexes_and_displays_verified_boq(tmp_path, monkeypatch):
     assert not page.exception
     assert "open_source" not in page.session_state
     assert any("New independent answer" in item.value for item in page.markdown)
+    assert any("Answered question: A new independent question" in item.value
+               for item in page.caption)
     assert not any("Indexed source location" in item.value for item in page.markdown)
     conn.close()
