@@ -115,7 +115,7 @@ def main() -> int:
                     excerpt = body.rsplit("Answer status:", 1)[-1].split(
                         "Source references", 1
                     )[0].strip()[:3000]
-                    tool_match = re.search(r"Model document-tool calls:\\s*(\\d+)", body)
+                    tool_match = re.search(r"Model document-tool calls:\s*(\d+)", body)
                     model_calls = int(tool_match.group(1)) if tool_match else 0
                     source_links = page.get_by_role("button", name="Open source").count()
                     provider_ok = bool(excerpt and
