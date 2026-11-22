@@ -36,8 +36,37 @@ It does **not** overwrite the historical pre-fix assessment
    Those are exact-citation coverage and verification-status metrics, **not** a
    24/44 factual accuracy score. Several uncited answers contain correct facts;
    some responses were partial or had indirect answers. The PR is not ready
-   to merge on this result. A separate true MiniLM hybrid A/B and targeted
-   citation-format recovery test are being evaluated, with their own artifacts.
+   to merge on this result.
+
+   **Generic citation-recovery improvement** was evaluated separately on 11
+   previously uncited cases: [11-case real Gemma regression](https://github.com/7clan/document-agent/actions/runs/45063766376).
+   All eleven were attempted with zero provider errors; **10/11 became
+   evidence-linked, 9/11 contained every labeled source, and both critical
+   cases had all labeled citations**. This is real provider evidence, not an
+   offline simulated response. One date claim remained uncited.
+
+   **Full post-fix keyword Gemma replay:** [run and preserved original answers](https://github.com/7clan/document-agent/actions/runs/45064021986).
+   44 cases were attempted; **34 completed without provider errors** and
+   **10 returned OpenRouter HTTP 402**, consistent with depleted account
+   usage/billing access. Of those 34, 27 contained every labeled expected
+   source, 24 were labeled evidence-linked, five were cautious/unverified, and
+   five were deterministic. This is *incomplete* as an entire 44-case semantic
+   acceptance measure, and 27 expected-label hits must not be misrepresented
+   as a 27/34 factual accuracy score. The unfinished cases are not scored as
+   model reasoning failures.
+
+   **Full hybrid Gemma A/B:** [run and original answers](https://github.com/7clan/document-agent/actions/runs/45063695738)
+   attempted the frozen 44 with real MiniLM, but **six OpenRouter HTTP 402**
+   prevented a complete model comparison. Hybrid retrieval itself separately
+   passed the independent 40-label test (37/40 Hit@5 with zero fallback).
+   Do not infer that using hybrid improved full-answer accuracy from the
+   billing-blocked comparison.
+
+   Both full Gemini and full OpenRouter runs lack sufficient provider quota
+   for an uninterrupted *current-code* acceptance. Additional expensive
+   acceptance workflows were changed to **manual dispatch only** to avoid
+   re-triggering charges on routine source pushes; the benchmark script now
+   halts immediately on HTTP 402 or after two consecutive HTTP 429 errors.
 4. Source-link validity is NOT claim entailment. A correct answer can cite a
    different relevant source from the frozen label, and a syntactically valid
    citation can be irrelevant. Independent source-level factual review must
@@ -59,9 +88,11 @@ It does **not** overwrite the historical pre-fix assessment
 
 ## Merge decision
 
-Do **not** mark the PR ready or merge into `main` merely because the six-question
-smoke interview passed. Require at minimum a complete 44-case source-review,
-a passing security audit, and passing CI on the final commit. If a provider
-rate-limits or the corpus score is low, keep the draft PR and record the
-unresolved result instead of claiming an unconditional release.
+**NOT MERGED; DRAFT.** Security, Linux and Windows CI, real hybrid retrieval,
+and both providers' live smoke tests pass. The two complete-model 44-question
+acceptance attempts on the latest general citation-recovery change were
+interrupted by quota/billing restrictions, and original-source correctness
+still requires independent review. Keep draft until a funded/provider-quota
+window permits an uninterrupted post-fix replay and remaining citation errors
+are assessed. No claim of 100% answer accuracy or zero residual risks is made.
 
