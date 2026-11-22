@@ -103,6 +103,8 @@ def main() -> int:
                 "textbox", name="Ask a question about the indexed documents"
             )
             for category, question, needs_model in QUESTIONS:
+                if needs_model:
+                    report["live_provider_cases"] += 1
                 question_box.fill(question)
                 # Streamlit text_area keeps edits pending until Ctrl+Enter or blur.
                 # A click on a disabled Ask button does not commit pending edits.
@@ -131,7 +133,6 @@ def main() -> int:
                     source_links = page.get_by_role("button", name="Open source").count()
                     provider_ok = bool(excerpt and not error_seen)
                     if needs_model:
-                        report["live_provider_cases"] += 1
                         provider_ok = provider_ok and model_calls > 0 and source_links > 0
                         if provider_ok:
                             report["successful_provider_cases"] += 1
