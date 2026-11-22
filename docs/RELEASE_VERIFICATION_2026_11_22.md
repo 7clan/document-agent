@@ -27,10 +27,17 @@ It does **not** overwrite the historical pre-fix assessment
    later runner stops after two consecutive 429s and preserves partial results.
    These responses are **rate/quota failures**, not measured semantic failures.
    The full Gemini replay is **not complete**.
-3. A separate 44-case **Gemma 4/OpenRouter** full acceptance run is available.
-   Its observed answers and exact citations are saved in a machine-readable
-   artifact for individual comparison against unchanged human-created labels.
-   No result should be claimed before independently inspecting that artifact.
+3. The first complete 44-case **Gemma 4/OpenRouter keyword retrieval** acceptance
+   run [finished and recorded](https://github.com/7clan/document-agent/actions/runs/45062930786):
+   **44/44 attempted, zero provider errors**, 24/44 answers included all expected
+   original-source labels, 12/15 critical cases included all labeled sources,
+   20/44 were marked unverified, and 37/44 had actual model tool calls (the
+   remaining seven include deterministic host results and cautious absences).
+   Those are exact-citation coverage and verification-status metrics, **not** a
+   24/44 factual accuracy score. Several uncited answers contain correct facts;
+   some responses were partial or had indirect answers. The PR is not ready
+   to merge on this result. A separate true MiniLM hybrid A/B and targeted
+   citation-format recovery test are being evaluated, with their own artifacts.
 4. Source-link validity is NOT claim entailment. A correct answer can cite a
    different relevant source from the frozen label, and a syntactically valid
    citation can be irrelevant. Independent source-level factual review must
