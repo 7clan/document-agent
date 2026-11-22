@@ -471,11 +471,76 @@ def _claim_excerpt(original: str, claim: str, width: int = 700) -> str:
     return _search_excerpt(original, terms, width)
 
 
+def _exhaustive_schedule_question(question: str) -> bool:
+    return bool(
+        re.search(r"(?i)\b(?:all|every|each)\b", question)
+        and re.search(r"(?i)\b(?:dates?|deadlines?|milestones?|schedule|deliverables?|handover)\b",
+                      question)
+        and re.search(r"(?i)\b(?:contractual|binding|planning|forecast|propos\w*|unapprov\w*)\b",
+                      question)
+    )
+
+
 def _question_date_context(conn: sqlite3.Connection, question: str,
                            sent: set[tuple[str, str]]) -> tuple[str, list[str]]:
     """Hand off named dates and bounded status context from original sources."""
-    dates = list(dict.fromkeys(match.group() for match in DATE_REGEX.finditer(question)))[:3]
+    exhaustive_status = _exhaustive_schedule_question(question)
     citations: list[str] = []
+    if exhaustive_status:
+        # An exhaustive comparison needs the dated register rows, not only a
+        # search hit for the one date named in the question. These are original
+        # source rows/passages; Python does not decide which dates are binding.
+        ranked: dict[str, tuple[int, int]] = {}
+        for order, item in enumerate(extract_dates(conn, limit=500)["dates"]):
+            nearby = item["context"]
+            nearby_text = (" ".join(str(value) for value in nearby.values())
+                           if isinstance(nearby, dict) else str(nearby))
+            status = bool(re.search(
+                r"(?i)\b(?:contractual|binding|planning|forecast|propos\w*|unapprov\w*)\b",
+                nearby_text))
+            obligation = bool(re.search(r"(?i)\b(?:due|deadline|handover|milestone)\b",
+                                        nearby_text))
+            if not (status or obligation):
+                continue
+            score = (4 if isinstance(nearby, dict) and status else 0) + (
+                2 if status else 0) + (1 if obligation else 0)
+            citation = item["citation"]
+            if citation not in ranked or score > ranked[citation][0]:
+                ranked[citation] = (score, order)
+        citations.extend(sorted(ranked, key=lambda cite: (-ranked[cite][0],
+                                                           ranked[cite][1])))
+    elif (not DATE_REGEX.search(question)
+          and re.search(r"(?i)\b(?:approv\w*|accept\w*|authoriz\w*|contractual|binding|signed)\b",
+                    question)
+          and re.search(r"(?i)\b(?:dates?|deadlines?|handover|takeover|schedule|"
+                        r"january|february|march|april|may|june|july|august|september|"
+                        r"october|november|december)\b", question)):
+        # Month-only approval questions cannot be found by an exact date
+        # search. Hand the model original approval and deadline clauses, while
+        # leaving their contractual interpretation to the answer and reader.
+        months = set(re.findall(
+            r"(?i)\b(?:january|february|march|april|may|june|july|august|"
+            r"september|october|november|december)\b", question.casefold()))
+        ranked = {}
+        for order, item in enumerate(extract_dates(conn, limit=500)["dates"]):
+            nearby = item["context"]
+            nearby_text = (" ".join(str(value) for value in nearby.values())
+                           if isinstance(nearby, dict) else str(nearby))
+            if not re.search(r"(?i)\b(?:approv\w*|contractual|binding|signed|"
+                             r"due|deadline|propos\w*)\b", nearby_text):
+                continue
+            score = (3 if any(month in item["date_text"].casefold()
+                              for month in months) else 0)
+            score += 2 if re.search(r"(?i)\b(?:not approved|contractual|binding)\b",
+                                     nearby_text) else 0
+            score += 1 if re.search(r"(?i)\b(?:due|deadline|propos\w*)\b",
+                                     nearby_text) else 0
+            citation = item["citation"]
+            if citation not in ranked or score > ranked[citation][0]:
+                ranked[citation] = (score, order)
+        citations.extend(sorted(ranked, key=lambda cite: (-ranked[cite][0],
+                                                           ranked[cite][1])))
+    dates = list(dict.fromkeys(match.group() for match in DATE_REGEX.finditer(question)))[:3]
     for date in dates:
         expected = _date_keys(date)
         for hit in search_documents(conn, date, limit=20).get("results", []):
@@ -502,8 +567,58 @@ def _question_date_context(conn: sqlite3.Connection, question: str,
                 citations.append(item["citation"])
             if len(set(citations)) >= 8:
                 break
-    context, _ = _evidence_handoff(conn, citations, question, sent, budget=5000)
-    return context, list(dict.fromkeys(citations))
+    context, included = _evidence_handoff(conn, citations, question, sent, budget=5000)
+    return context, included
+
+
+def _missing_schedule_evidence(conn: sqlite3.Connection, question: str,
+                               answer: str, *, show_all: bool = False
+                               ) -> tuple[list[str], list[str], bool]:
+    """Expose omitted original dated clauses/rows; do not infer legal status."""
+    if not _exhaustive_schedule_question(question):
+        return [], [], False
+    result = extract_dates(conn, limit=500)
+    present = set() if show_all else _date_keys(answer)
+    added_dates: set[str] = set()
+    lines: list[str] = []
+    citations: list[str] = []
+    dated_sources = result["dates"]
+    if show_all:
+        # Structured rows carry the date, identifier, status and approval in
+        # one authentic evidence unit; show them before duplicate prose dates.
+        dated_sources = sorted(dated_sources,
+                               key=lambda item: not isinstance(item["context"], dict))
+    for item in dated_sources:
+        keys = _date_keys(item["date_text"])
+        if not keys or keys & (present | added_dates):
+            continue
+        citation = item["citation"]
+        evidence = get_evidence(conn, citation)
+        if "error" in evidence:
+            continue
+        if "row" in evidence:
+            values = evidence["row"]
+            original = " | ".join(f"{col}: {value}" for col, value in values.items()
+                                  if value is not None)
+            relevant = re.search(
+                r"(?i)\b(?:contractual|binding|planning|forecast|propos\w*|unapprov\w*|"
+                r"due|deadline|handover)\b", original)
+        else:
+            original = str(evidence.get("text", ""))
+            original = next((line.strip() for line in original.splitlines()
+                             if item["date_text"] in line), "")
+            relevant = re.search(
+                r"(?i)\b(?:due|deadline|handover|planning|forecast|propos\w*|"
+                r"unapprov\w*)\b", original)
+        if not relevant:
+            continue
+        lines.append(f"- {original[:400]} — {citation}")
+        citations.append(citation)
+        added_dates.update(keys)
+        if len(lines) >= 20:
+            break
+    incomplete = bool(result["has_more"] or len(lines) >= 20)
+    return lines, citations, incomplete
 
 
 def _cross_document_amount_question(question: str) -> bool:
@@ -1487,10 +1602,10 @@ def _source_linked_answer(conn: sqlite3.Connection, text: str, citations: list[s
                 sources.append(citation)
         unmatched_dates = _date_keys(statement) - _date_keys("\n".join(original_texts))
         status = "evidence_linked" if local and not missing and not unmatched_dates else "unverified"
-        reason = ("Claimed date absent from cited passages" if unmatched_dates else
-                  "Retrieved source; model interpretation was not checked" if
-                  status == "evidence_linked" else
-                  "A cited source was not retrieved or had no indexed passage")
+        reason = ("A cited source was not retrieved or had no indexed passage"
+                  if missing or not local else
+                  "Claimed date absent from cited passages" if unmatched_dates else
+                  "Retrieved source; model interpretation was not checked")
         claims.append({"text": statement, "status": status,
                        "sources": [item["citation"] for item in local],
                        "quotes": local, "reason": reason})
@@ -1527,9 +1642,29 @@ def _source_linked_answer(conn: sqlite3.Connection, text: str, citations: list[s
     status = "evidence_linked" if linked and not payload["insufficient"] and not issues else "unverified"
     audit = {"name": "source_linking", "ok": linked,
              "reason": "Citations checked; model claims were not fact-checked"}
+    needs_review = any(item["status"] == "unverified" for item in claims)
+    omitted, original_sources, schedule_incomplete = _missing_schedule_evidence(
+        conn, question, result_text, show_all=needs_review)
+    if omitted:
+        label = ("Original dated schedule evidence for manual review; this does "
+                 "not validate the AI claims:" if needs_review else
+                 "Additional original schedule evidence omitted by the AI answer "
+                 "(source wording; review its status):")
+        result_text += "\n\n" + label + "\n" + "\n".join(omitted)
+        candidates.extend(original_sources)
+    if omitted or schedule_incomplete:
+        trace = [*trace, {"name": "host_schedule_completion", "ok": not schedule_incomplete,
+                          "origin": "application", "source_dates_shown": len(omitted),
+                          "manual_review": needs_review,
+                          "incomplete": schedule_incomplete,
+                          "reason": "Original dated sources shown; no legal status inferred"}]
+    if schedule_incomplete:
+        result_text += "\n\nThe dated-source inventory is incomplete; narrow the folder or paginate."
+        status = "unverified"
     return Answer(result_text or "The provider returned no answer text.",
                   list(dict.fromkeys(sources)), [*trace, audit],
-                  structured={"candidate_sources": candidates} if candidates else None,
+                  structured={"candidate_sources": list(dict.fromkeys(candidates))}
+                  if candidates else None,
                   verification_status=status, claims=claims)
 
 
@@ -1918,8 +2053,10 @@ def _ask_gemini(conn: sqlite3.Connection, question: str, max_rounds: int,
                 conn, question, sent_evidence)
             if date_context:
                 contents.append(types.Content(role="user", parts=[types.Part.from_text(
-                    text="Original indexed passages matching dates named in the question:\n" +
-                         date_context)]))
+                    text="Original indexed date and status evidence. If the question asks "
+                         "for every schedule date, account for each relevant dated row "
+                         "below before answering; source status words are evidence, "
+                         "not an automatic approval verdict:\n" + date_context)]))
                 citations.extend(date_citations)
                 tool_calls.append({"name": "host_date_context", "ok": True,
                                    "origin": "application", "source_count": len(date_citations),
@@ -2307,8 +2444,10 @@ def _ask_openai(conn: sqlite3.Connection, question: str, max_rounds: int,
                 conn, question, sent_evidence)
             if date_context:
                 messages.append({"role": "user", "content":
-                                 "Original indexed passages matching dates named in the question:\n" +
-                                 date_context})
+                                 "Original indexed date and status evidence. If the question "
+                                 "asks for every schedule date, account for each relevant dated "
+                                 "row below before answering; source status words are evidence, "
+                                 "not an automatic approval verdict:\n" + date_context})
                 citations.extend(date_citations)
                 trace.append({"name": "host_date_context", "ok": True,
                               "origin": "application", "source_count": len(date_citations),

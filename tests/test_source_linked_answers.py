@@ -135,6 +135,23 @@ def test_question_date_lookup_finds_decision_in_other_document():
     assert "not approved" in context
 
 
+def test_month_only_approval_question_hands_off_pending_and_signed_dates():
+    conn = _sources()
+    conn.execute("INSERT INTO passages(document_id,page,chunk,text) VALUES"
+                 "(2,2,0,'Signed contract: final handover is due 20 November 2028.')")
+    conn.execute("INSERT INTO documents(id,path,kind,status) "
+                 "VALUES(3,'Pending.pdf','pdf','ready')")
+    conn.execute("INSERT INTO passages(document_id,page,chunk,text) VALUES"
+                 "(3,1,0,'The proposed 5 December 2028 takeover was not approved.')")
+    context, citations = _question_date_context(
+        conn, "Was the December takeover formally accepted or is the signed "
+        "handover deadline still binding?", set())
+    assert "Pending.pdf | page 1 | chunk 0" in citations
+    assert "Terms.pdf | page 2 | chunk 0" in citations
+    assert "not approved" in context
+    assert "20 November 2028" in context
+
+
 def test_date_status_question_hands_off_other_file_rows_without_inventing_status():
     conn = _sources()
     conn.execute("INSERT INTO passages(document_id,page,chunk,text) VALUES"
@@ -146,8 +163,65 @@ def test_date_status_question_hands_off_other_file_rows_without_inventing_status
     assert "2028-03-21" in context
     assert "Planning" in context
     assert "Not approved" in context
-    assert "Terms.pdf | page 2 | chunk 0" not in citations
+    assert "Terms.pdf | page 2 | chunk 0" in citations
     assert _question_date_context(conn, "Did the deadline change?", set()) == ("", [])
+
+
+def test_exhaustive_schedule_comparison_hands_off_all_original_dated_rows():
+    conn = _sources()
+    conn.execute("INSERT INTO passages(document_id,page,chunk,text) VALUES"
+                 "(2,2,0,'Drawings are due 10 January 2028. Final handover is due "
+                 "14 February 2028.')")
+    context, citations = _question_date_context(
+        conn, "Separate every contractual schedule date from planning and "
+        "unapproved proposal dates.", set())
+    assert "Fresh.xls | Gates!C4" in citations
+    assert "Fresh.xls | Gates!C5" in citations
+    assert "Terms.pdf | page 2 | chunk 0" in citations
+    assert "2028-02-14" in context
+    assert "2028-03-21" in context
+    assert "10 January 2028" in context
+
+
+def test_exhaustive_schedule_answer_shows_omitted_original_dates_without_inference():
+    conn = _sources()
+    conn.execute("INSERT INTO passages(document_id,page,chunk,text) VALUES"
+                 "(2,2,0,'Drawings are due 10 January 2028. Final handover is due "
+                 "14 February 2028.')")
+    conn.execute("INSERT INTO passages(document_id,page,chunk,text) VALUES"
+                 "(2,3,0,'This document was issued on 1 December 2027.')")
+    claim = "Final commissioning is due 14 February 2028."
+    citation = "Fresh.xls | Gates | row 4"
+    answer = _source_linked_answer(
+        conn, _draft(claim, citation), [citation],
+        [{"name": "search_documents", "ok": True}],
+        "Separate every contractual schedule date from planning and proposed dates.")
+    assert "10 January 2028" in answer.text
+    assert "2028-03-21" in answer.text
+    assert "1 December 2027" not in answer.text
+    assert "Additional original schedule evidence omitted" in answer.text
+    assert "Terms.pdf | page 2 | chunk 0" in answer.structured["candidate_sources"]
+    assert "Terms.pdf | page 2 | chunk 0" not in answer.sources
+    assert answer.tool_calls[-2]["name"] == "host_schedule_completion"
+    assert answer.tool_calls[-2]["origin"] == "application"
+    assert answer.verification_status == "evidence_linked"
+
+
+def test_uncited_schedule_claims_remain_unverified_with_original_rows_to_inspect():
+    conn = _sources()
+    claim = "G-01 is contractual on 2028-02-14 and G-02 is unapproved on 2028-03-21."
+    answer = _source_linked_answer(
+        conn, _draft(claim), [], [{"name": "search_documents", "ok": True}],
+        "Classify every contractual schedule date and planning proposal date.")
+    assert answer.verification_status == "unverified"
+    assert answer.sources == []
+    assert "Original dated schedule evidence for manual review" in answer.text
+    assert "2028-02-14" in answer.text
+    assert "2028-03-21" in answer.text
+    assert "Fresh.xls | Gates!C4" in answer.structured["candidate_sources"]
+    assert "Fresh.xls | Gates!C5" in answer.structured["candidate_sources"]
+    assert answer.tool_calls[-2]["manual_review"] is True
+    assert all(item["status"] == "unverified" for item in answer.claims)
 
 
 def test_date_anchor_accepts_source_iso_and_claim_month_name():

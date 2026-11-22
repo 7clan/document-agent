@@ -65,6 +65,7 @@ def test_streamlit_indexes_and_displays_verified_boq(tmp_path, monkeypatch):
     pdf.save()
     db_path = tmp_path / "app.db"
     monkeypatch.setenv("DOCUMENT_AGENT_DB_PATH", str(db_path))
+    monkeypatch.setenv("OLLAMA_API_KEY", "synthetic-test-only")
     # UI behavior is independent of the optional embedding model's cold load.
     monkeypatch.setenv("DOCUMENT_AGENT_RETRIEVAL_MODE", "keyword")
     app = Path(__file__).resolve().parents[1] / "app.py"
@@ -156,4 +157,12 @@ def test_streamlit_indexes_and_displays_verified_boq(tmp_path, monkeypatch):
                for item in page.caption)
     next(button for button in page.button if button.label == "Open source").click().run()
     assert any("Submit design drawings" in item.value for item in page.text)
+    monkeypatch.setattr("document_agent.agent.ask", lambda *_args, **_kwargs: Answer(
+        "New independent answer", [], [], verification_status="unverified"))
+    page.text_area[0].set_value("A new independent question").run()
+    next(button for button in page.button if button.label == "Ask agent").click().run()
+    assert not page.exception
+    assert "open_source" not in page.session_state
+    assert any("New independent answer" in item.value for item in page.markdown)
+    assert not any("Indexed source location" in item.value for item in page.markdown)
     conn.close()

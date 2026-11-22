@@ -130,6 +130,36 @@ def test_rank_fusion_deduplicates():
     assert {hit["citation"] for hit in results} == {"A", "B", "C"}
 
 
+def test_spreadsheet_embedding_includes_source_headings_without_changing_evidence():
+    conn = connect(":memory:")
+    conn.execute("INSERT INTO documents(path,kind,status) VALUES('Prices.xlsx','xlsx','ready')")
+    for number, values in ((1, {"A": "Reference", "B": "Work", "C": "Amount (SAR)"}),
+                           (2, {"A": "DP-22", "B": "Feeder panel commissioning",
+                                "C": 1100000})):
+        conn.execute("INSERT INTO sheet_rows(document_id,sheet,row_num,cells_json) "
+                     "VALUES(1,'Base Selection',?,?)",
+                     (number, json.dumps({col: {"value": value}
+                                          for col, value in values.items()})))
+    conn.commit()
+    records = list(hybrid.source_records(conn))
+    data = records[-1]
+    assert "Worksheet Base Selection" in data["embedding_text"]
+    assert "Work: Feeder panel commissioning" in data["embedding_text"]
+    assert "Amount (SAR): 1100000" in data["embedding_text"]
+    assert data["text"] == "A: DP-22 B: Feeder panel commissioning C: 1100000"
+    assert get_evidence(conn, data["citation"])["row"]["B"] == "Feeder panel commissioning"
+
+
+def test_strong_semantic_source_keeps_a_top_three_place():
+    lexical = [{"citation": name, "score": 2} for name in ("A", "B", "C", "D")]
+    semantic = [{"citation": "ROW", "score": .38, "semantic_similarity": .38}]
+    output = hybrid.fuse_results(lexical, semantic, 3)
+    assert [hit["citation"] for hit in output] == ["A", "B", "ROW"]
+    weak = [{"citation": "ROW", "score": .25, "semantic_similarity": .25}]
+    assert [hit["citation"] for hit in hybrid.fuse_results(lexical, weak, 3)] == [
+        "A", "B", "C"]
+
+
 def test_common_question_words_do_not_bury_semantic_spreadsheet_row(monkeypatch):
     class ConverterEncoder:
         def encode(self, texts, **kwargs):

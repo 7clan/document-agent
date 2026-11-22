@@ -425,6 +425,16 @@ source in the top three in both modes. Hybrid improved the rank for two,
 matched one, and lowered the rank for one. These small evaluations measure
 retrieval only, not the factual accuracy of an AI answer.
 
+The larger [frozen fictional release assessment](docs/RELEASE_CANDIDATE_EVALUATION.md)
+found hybrid **37/40 Hit@5** versus keyword **35/40** with the real cached MiniLM
+model and no keyword fallback. At `k=3`, both modes found 34/40, and hybrid's
+MRR@5 was slightly worse. Source-derived workbook, worksheet and column labels
+now improve Excel row embeddings without changing cited cell values. A strong
+semantic result can occupy one of the first three ranks. The same report records
+all individual misses, six real Streamlit answers, provider variation and the
+current **NOT READY** release verdict. A valid citation still does not prove the
+model's interpretation, and a general search is not an exhaustive BOQ calculation.
+
 Model docs: [Sentence Transformers](https://sbert.net/docs/package_reference/sentence_transformer/model.html)
 and [all-MiniLM-L6-v2](https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2).
 

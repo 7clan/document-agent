@@ -82,15 +82,36 @@ def source_records(conn: sqlite3.Connection, file: str = "") -> Iterator[dict[st
     sql = ("SELECT d.id,d.path,s.sheet,s.row_num,s.cells_json FROM sheet_rows s "
            "JOIN documents d ON d.id=s.document_id WHERE d.status='ready'"
            + where + " ORDER BY d.path,s.sheet,s.row_num")
+    last_sheet: tuple[str, str] | None = None
+    headings: dict[str, str] = {}
     for row in conn.execute(sql, args):
+        sheet_key = (row["path"], row["sheet"])
+        if sheet_key != last_sheet:
+            headings = {}
+            last_sheet = sheet_key
         cells = json.loads(row["cells_json"])
         values = {key: entry.get("value") for key, entry in cells.items()}
         text = " ".join(f"{key}: {value}" for key, value in values.items()
                         if value is not None)
         if text.strip():
+            # Headings are source data, not model-generated synonyms. Include them
+            # only in the embedding input; cited evidence remains the original row.
+            labels = [str(value).strip() for value in values.values()
+                      if isinstance(value, str) and value.strip()
+                      and not any(char.isdigit() for char in value)]
+            if len(values) >= 3 and len(labels) >= 3:
+                headings = {key: str(value).strip() for key, value in values.items()
+                            if isinstance(value, str) and value.strip()}
+            described = "; ".join(
+                f"{headings.get(key, key)}: {value}" for key, value in values.items()
+                if value is not None
+            )
             yield {"document_id": row["id"],
                    "citation": f"{row['path']} | {row['sheet']} | row {row['row_num']}",
-                   "text": text[:3000], "preview": values, "preview_only": False}
+                   "text": text[:3000],
+                   "embedding_text": (f"Spreadsheet document {row['path']}. "
+                                      f"Worksheet {row['sheet']}. {described}")[:3000],
+                   "preview": values, "preview_only": False}
 
 
 def _normalized(values: Any) -> list[float]:
@@ -128,13 +149,15 @@ def sync_embeddings(
     seen = {source["citation"] for source in sources}
     changed = []
     for source in sources:
-        digest = hashlib.sha256(source["text"].encode("utf-8")).hexdigest()
+        embedding_text = source.get("embedding_text", source["text"])
+        digest = hashlib.sha256(embedding_text.encode("utf-8")).hexdigest()
         if cached.get(source["citation"]) != digest:
             changed.append((source, digest))
     indexed = 0
     for start in range(0, len(changed), batch_size):
         batch = changed[start:start + batch_size]
-        vectors = _encode(encoder, [source["text"] for source, _ in batch])
+        vectors = _encode(encoder, [source.get("embedding_text", source["text"])
+                                    for source, _ in batch])
         with conn:
             for (source, digest), vector in zip(batch, vectors):
                 conn.execute(
@@ -222,4 +245,13 @@ def fuse_results(
         hit["fusion_score"] = round(ranks[citation], 8)
     ordered = sorted(hits.values(),
                      key=lambda hit: (-ranks[hit["citation"]], hit["citation"]))
+    # Strong semantic candidates must remain visible even when weak lexical
+    # matches occupy the first three fused positions. Keep the two leading fused
+    # results, then reserve the third place for the best semantic source.
+    if semantic and limit >= 3 and semantic[0].get("semantic_similarity", 0) >= 0.30:
+        best = semantic[0]["citation"]
+        if best not in {hit["citation"] for hit in ordered[:3]}:
+            selected = next(hit for hit in ordered if hit["citation"] == best)
+            ordered.remove(selected)
+            ordered.insert(2, selected)
     return ordered[:limit]

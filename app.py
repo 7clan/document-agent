@@ -308,6 +308,8 @@ st.caption("Questions are independent: include the filename, threshold, or item 
 if st.button("Ask agent", disabled=not question.strip() or not ready_to_ask or
              not folder_is_indexed,
              type="primary"):
+    st.session_state.pop("last_answer", None)
+    st.session_state.pop("open_source", None)
     with st.spinner("Analyzing evidence..."):
         try:
             answer = ask(conn, question, provider=provider, model=selected_model)
