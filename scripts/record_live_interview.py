@@ -115,16 +115,22 @@ def main() -> int:
                     excerpt = body.rsplit("Answer status:", 1)[-1].split(
                         "Source references", 1
                     )[0].strip()[:3000]
+                    tool_match = re.search(r"Model document-tool calls:\\s*(\\d+)", body)
+                    model_calls = int(tool_match.group(1)) if tool_match else 0
+                    source_links = page.get_by_role("button", name="Open source").count()
                     provider_ok = bool(excerpt and
                                        "provider diagnostic" not in excerpt.casefold())
                     if needs_model:
                         report["live_provider_cases"] += 1
+                        provider_ok = provider_ok and model_calls > 0 and source_links > 0
                         if provider_ok:
                             report["successful_provider_cases"] += 1
                     report["questions"].append({
                         "category": category, "question": question,
                         "needs_live_provider": needs_model,
                         "completed": provider_ok,
+                        "model_tool_calls": model_calls,
+                        "source_open_controls": source_links,
                         "observed_answer": excerpt,
                     })
                 except Exception as exc:  # noqa: BLE001 - preserve truthful failure log
