@@ -1,0 +1,50 @@
+name: Gemma citation recovery targeted regression
+
+on:
+  push:
+    branches:
+      - feature/bounded-self-recovery
+    paths:
+      - src/document_agent/agent.py
+      - .github/workflows/gemma-citation-regression.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  citation-recovery:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      COMPATIBLE_API_KEY: ${{ secrets.OPENROUTER_API_KEY || secrets.OPEN_ROUTER_API_KEY || secrets.OPENROUTER_KEY || secrets.OPENROUTER }}
+      COMPATIBLE_BASE_URL: https://openrouter.ai/api/v1
+      COMPATIBLE_MODEL: google/gemma-4-31b-it
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install real compatible document agent
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e '.[dev,openai]'
+      - name: Require real provider key
+        run: |
+          if [ -z "$COMPATIBLE_API_KEY" ]; then
+            exit 1
+          fi
+      - name: Re-evaluate unchanged hardest source-linking cases
+        run: |
+          python scripts/run_frozen_acceptance.py --provider compatible \
+            --mode keyword --delay 2 \
+            --ids 2,5,6,7,9,14,17,18,23,34,35 \
+            --output .local/gemma_citation_regression
+      - name: Save exact measured answers and citations
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: real-gemma-citation-recovery-cases
+          path: .local/gemma_citation_regression/acceptance_results.json
+          retention-days: 14
+          if-no-files-found: warn
