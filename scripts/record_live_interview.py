@@ -56,7 +56,7 @@ def main() -> int:
         return 2
 
     try:
-        from playwright.sync_api import sync_playwright
+        from playwright.sync_api import expect, sync_playwright
     except ImportError:
         print("Install Playwright first: pip install playwright && "
               "python -m playwright install chromium", file=sys.stderr)
@@ -108,8 +108,6 @@ def main() -> int:
                 # A click on a disabled Ask button does not commit pending edits.
                 question_box.press("Control+Enter")
                 ask_button = page.get_by_role("button", name="Ask agent")
-                from playwright.sync_api import expect
-
                 expect(ask_button).to_be_enabled(timeout=15000)
                 ask_button.click()
                 try:
