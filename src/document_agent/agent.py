@@ -284,6 +284,28 @@ def _provider_error_code(exc: Exception) -> str:
     return ""
 
 
+_SAFE_OPENROUTER_LIMIT_SOURCES = {
+    "openrouter_credits",
+    "openrouter_key_limit",
+    "openrouter_in_flight_budget",
+    "openrouter_free_tier_daily",
+    "openrouter_free_tier_per_minute",
+    "upstream_provider_shared_pool",
+}
+
+
+def _safe_limit_source(exc: Exception) -> str | None:
+    """Extract only OpenRouter's documented error category, never its body."""
+    body = getattr(exc, "body", None)
+    if not isinstance(body, dict):
+        return None
+    error = body.get("error", body)
+    metadata = error.get("metadata") if isinstance(error, dict) else None
+    source = metadata.get("limit_source") if isinstance(metadata, dict) else None
+    return source if isinstance(source, str) and (
+        source in _SAFE_OPENROUTER_LIMIT_SOURCES) else None
+
+
 def provider_error_diagnostic(exc: Exception) -> dict[str, Any]:
     """Only fixed-size provider metadata, never API bodies or generated text."""
     status = getattr(exc, "status_code", None)
@@ -303,9 +325,15 @@ def provider_error_diagnostic(exc: Exception) -> dict[str, Any]:
     code = (raw_code if isinstance(raw_code, str)
             and re.fullmatch(r"[a-z][a-z0-9_]{0,63}", raw_code) else "provider_error")
     phase = getattr(exc, "request_phase", None) or getattr(exc, "_document_phase", None)
-    return {"http_status": status if isinstance(status, int) and 100 <= status <= 599 else None,
-            "code": code,
-            "phase": phase if phase in {"tool", "final"} else "unknown"}
+    diagnostic = {
+        "http_status": status if isinstance(status, int) and 100 <= status <= 599 else None,
+        "code": code,
+        "phase": phase if phase in {"tool", "final"} else "unknown",
+    }
+    limit_source = _safe_limit_source(exc)
+    if limit_source is not None:
+        diagnostic["limit_source"] = limit_source
+    return diagnostic
 
 
 def _output_parse_failed(exc: Exception) -> bool:
