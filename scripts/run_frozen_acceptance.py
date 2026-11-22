@@ -48,7 +48,7 @@ def _clean(value: object) -> str:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--provider", choices=("gemini", "ollama_cloud"), default="gemini")
+    parser.add_argument("--provider", choices=("gemini", "ollama_cloud", "compatible"), default="gemini")
     parser.add_argument("--mode", choices=("keyword", "hybrid"), default="keyword")
     parser.add_argument("--delay", type=float, default=1.5)
     parser.add_argument("--ids", default="", help="Optional comma-separated IDs for diagnosis")
@@ -59,6 +59,8 @@ def main() -> int:
         parser.error("GEMINI_API_KEY missing")
     if args.provider == "ollama_cloud" and not os.environ.get("OLLAMA_API_KEY"):
         parser.error("OLLAMA_API_KEY missing")
+    if args.provider == "compatible" and not os.environ.get("COMPATIBLE_API_KEY"):
+        parser.error("COMPATIBLE_API_KEY missing")
 
     frozen = json.loads(CASES.read_text(encoding="utf-8"))
     cases = frozen["questions"]
@@ -90,12 +92,15 @@ def main() -> int:
         report = {
             "created_utc": datetime.now(UTC).isoformat(),
             "provider": args.provider,
-            "model": os.environ.get(
-                "GEMINI_MODEL" if args.provider == "gemini" else "OLLAMA_MODEL",
-                "gemini-2.5-flash" if args.provider == "gemini" else "gemma4:31b"),
+            "model": os.environ.get({
+                "gemini": "GEMINI_MODEL", "ollama_cloud": "OLLAMA_MODEL",
+                "compatible": "COMPATIBLE_MODEL",
+            }[args.provider], "gemini-2.5-flash"),
             "retrieval_mode_requested": args.mode,
             "ground_truth_sha256": ground_truth_hash,
-            "ground_truth_unchanged": True,
+            "ground_truth_label_file_unmodified": True,
+            "corpus_byte_identical": all(item["byte_identical"] for item in hashes.values()),
+            "corpus_note": "Regenerated fictional documents; compare hashes to frozen corpus. Some Office metadata can alter bytes without changing indexed document content.",
             "document_hashes": hashes,
             "ingestion": {"ready": 8, "failed": 1, "files": files},
             "case_count": len(cases),
@@ -128,6 +133,7 @@ def main() -> int:
             output.write_text(json.dumps(report, indent=2, ensure_ascii=False),
                               encoding="utf-8")
 
+        rate_limited_in_a_row = 0
         for i, case in enumerate(cases, 1):
             started = time.monotonic()
             entry = {
@@ -172,6 +178,10 @@ def main() -> int:
                     "exception_type": type(exc).__name__,
                 }
             entry["elapsed_seconds"] = round(time.monotonic() - started, 2)
+            if entry.get("provider_error", {}).get("http_status") == 429:
+                rate_limited_in_a_row += 1
+            elif "provider_error" not in entry or entry["provider_error"].get("http_status") != 429:
+                rate_limited_in_a_row = 0
             report["cases"].append(entry)
             save()
             print(
@@ -182,12 +192,17 @@ def main() -> int:
                 f"elapsed_s={entry['elapsed_seconds']}",
                 flush=True,
             )
+            if rate_limited_in_a_row >= 2:
+                report["stopped_early"] = "Provider HTTP 429 quota reached twice consecutively; further requests suppressed."
+                save()
+                print("Provider quota exhausted: stopping safely after two consecutive 429s.", flush=True)
+                break
             if i < len(cases):
                 time.sleep(max(0.0, args.delay))
         save()
         print("FINAL SUMMARY " + json.dumps(report["summary"]), flush=True)
         # Transport or indexing errors are failures. Subjective scoring is separate.
-        return 1 if report["summary"]["provider_errors"] else 0
+        return 1 if report["summary"]["provider_errors"] or len(report["cases"]) != len(cases) else 0
     finally:
         conn.close()
 
