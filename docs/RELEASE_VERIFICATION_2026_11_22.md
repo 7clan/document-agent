@@ -16,6 +16,7 @@ It does **not** overwrite the historical pre-fix assessment
 | Gemma 4 31B through OpenRouter | **3/3 smoke cases completed**, of which 2 used real Gemma function calls and original citations, 1 was deterministic | [Gemma provider run](https://github.com/7clan/document-agent/actions/runs/45062669060) |
 | Python 3.11 and Windows lock dependency vulnerability audit | **No known findings** using pip-audit against installed Python 3.11 environment and upgraded pinned Windows snapshot; pip check passed | [Dependency security run](https://github.com/7clan/document-agent/actions/runs/45062802160) |
 | CI test/lint | Offline tests, retrieval smoke and Ruff passed after the dependency fixes | [Checks](https://github.com/7clan/document-agent/actions/runs/45062802144) |
+| Actual Windows Python 3.12 execution | **330 tests passed**, Pillow 13.0.0 and Streamlit 1.67.0 installed, no broken requirements | [Windows compatibility](https://github.com/7clan/document-agent/actions/runs/45063157350) |
 
 ## Limitations and unattended-release gates
 
@@ -38,9 +39,11 @@ It does **not** overwrite the historical pre-fix assessment
    `scripts/create_release_corpus.py`. Spreadsheet and Word containers can
    change byte hashes with fresh ZIP metadata; the acceptance runner reports
    per-file SHA256 comparisons rather than silently asserting byte identity.
-6. Pinned Windows dependencies are audited as a *list of versions*, not as
-   an installed Windows runtime; the separate Windows 3.12 compatibility gate
-   tests actual execution.
+6. Pinned Windows dependencies are audited as a *list of versions*. In addition,
+   a separate real Windows 3.12 runner installed the application runtime,
+   checked Pillow and Streamlit versions and ran all 330 tests successfully.
+   This checks the runtime resolver; it is not a byte-for-byte installation
+   of every optional package in the 100-package Windows lock.
 7. The project has read-only model tools and does not provide a general
    unrestricted security guarantee. Never submit confidential data to an
    external provider without appropriate data-processing authorization.
