@@ -16,8 +16,9 @@ changing the provider adapters, read-only tool list or deterministic BOQ arithme
   accompany the [evaluation report](RELEASE_CANDIDATE_EVALUATION.md).
 
 **Status: interview-demo prototype, not release ready under the specified
-acceptance gate.** The uncut Gemini interview showed a false absence response
-and correct milestone facts with no usable model citations. A targeted live
-approval retest passed after the context change, but broader answer reliability
+acceptance gate.** An earlier uncut Gemini interview showed a false absence;
+the bounded context change corrected that question in a fresh six-question
+browser replay. The replay still gave correct milestone facts without usable
+model citations, and the exact-ID answer was partial. Broader answer reliability
 and critical-case completeness are unproven. Review the report and original
 sources before using the app for consequential decisions.

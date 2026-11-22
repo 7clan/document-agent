@@ -1,13 +1,15 @@
 # Release candidate evaluation — 22 November 2026
 
 **Verdict: NOT READY under the stated release criteria.** The application is
-demonstrable on fictional documents, but the final uncut interview still contained
-one false absence answer and one answer whose correct milestone facts had no usable
-model citations. A later, bounded live Gemini retest answered the approval question
-after the general month-only date-context change. That single retest does not erase
-the failure in the uncut run or establish provider reliability. The 44-question
-dataset was measured for retrieval; only six questions received final answers in the
-recorded interview, so 100% critical answer completeness has not been established.
+demonstrable on fictional documents, but the latest uncut interview still contained
+one answer whose correct milestone facts had no usable model citations. An earlier
+uncut run also produced a false absence on the approval question. A general,
+bounded month-only date-context change corrected that question in both a direct
+Gemini retest and a fresh six-question browser replay. The earlier failure remains
+part of the record; one improved replay does not establish provider reliability.
+The 44-question dataset was measured for retrieval; only six questions received
+final answers in the recorded interview, so 100% critical answer completeness has
+not been established.
 
 ## Frozen, reproducible assessment
 
@@ -116,23 +118,27 @@ which is why an exhaustive date answer must use a separate structured inventory.
 
 ## Real Streamlit interview
 
-The browser interacted with the running Streamlit app at 1920×1080 and a separate
+The browser interacted with the running Streamlit app at 1920x1080 and a separate
 SQLite index. The folder was indexed in the app, with eight files ready and the
-damaged PDF visibly failed. All six questions were submitted independently and
-waited for a fresh completed response. The uncut recording retains the failures.
-No provider HTTP error occurred in this final six-question run; an earlier
-development run encountered Gemini HTTP 429 and was not scored as success.
+damaged PDF visibly failed. All six frozen questions were submitted independently
+and waited for a fresh spinner-completed response. The latest uncut recording
+retains the missing-citation failure. No provider HTTP error occurred in that
+six-question run; an earlier development run encountered Gemini HTTP 429 and was
+not scored as success. A separate attempted replay had a stale browser/index
+connection and was discarded before provider answers were scored; the corrected
+replay used a fresh absolute database path and checked the ready count in both
+SQLite and Streamlit.
 
 | # | Category | Observed result | Verdict | Elapsed |
 |---:|---|---|---|---:|
-| 1 | Indirect semantic scope | Three 250 kW pumps in Hall A, cited to signed PDF; hybrid search visible | Pass | 40.5 s |
-| 2 | Exact Excel IDs | HP-103 SAR 950,000 and distinct HP-1030 SAR 1,050,000, exact cells F6/F10; did not explicitly say “No, not the same item” | Partial | 17.5 s |
-| 3 | Strict multi-row threshold | Four correct items, exact F4/F5/F8/F10, SAR 6,400,000 Python sum; original row opened | Pass | 12.1 s |
-| 4 | Cross-document approval | Gemini falsely said the December decision/deadline information was absent despite indexed evidence; safely unverified | Fail | 11.7 s |
-| 5 | Milestone status | Five IDs, dates and statuses factually correct, but model provided no usable supporting citations; original dated evidence shown for manual review, not claim verification | Fail | 15.7 s |
-| 6 | Missing phone/payment terms | No invented contact or payment schedule; coverage warning for damaged file and unverified absence conclusion | Pass with coverage caveat | 11.8 s |
+| 1 | Indirect semantic scope | Three 250 kW pumps in Hall A, cited to signed PDF; hybrid search and original page visible | Pass | 14.5 s |
+| 2 | Exact Excel IDs | HP-103 SAR 950,000 and HP-1030 SAR 1,050,000, exact cells F6/F10; did not explicitly say they are different items | Partial | 10.9 s |
+| 3 | Strict multi-row threshold | Four correct items, exact F4/F5/F8/F10, SAR 6,400,000 Python sum; original row opened | Pass | 11.4 s |
+| 4 | Cross-document approval | Correctly distinguished unapproved 5 December proposal from binding 20 November deadline, citing PDF, Word and Excel | Pass | 7.3 s |
+| 5 | Milestone status | Five IDs, dates and statuses factually correct, but model provided no usable supporting citations; original dated rows shown for manual review, not claim verification | Fail | 13.2 s |
+| 6 | Missing phone/payment terms | No invented contact or payment schedule; coverage warning for damaged file and unverified absence conclusion | Pass with coverage caveat | 10.6 s |
 
-Mean answer latency was **18.2 seconds** (six questions); indexing time is
+Mean answer latency was **11.3 seconds** (six questions); indexing time is
 separate. Numerically checked interview amounts were correct in both spreadsheet
 cases. Exact ID matching distinguished HP-103 from HP-1030. The output status for
 the BOQ was conservatively reduced because an unrelated PDF failed indexing;
@@ -140,11 +146,14 @@ the calculation itself was checked on the readable workbook. The browser display
 source excerpts and exact cells, but a cited passage is provenance, not proof of
 every model interpretation.
 
-A later **single live Gemini retest** of question 4, after the general month-only
-approval-date handoff, returned the correct 5 December 2028 unapproved proposal
-and 20 November 2028 signed deadline with PDF, Word and Excel citations. It was
-evidence-linked, not deterministically fact-verified. This improvement remains
-unproven across repeated provider runs and unseen documents.
+The previous uncut run, on the code before the month-only context adjustment,
+**failed question 4** with a false absence. A single direct Gemini retest and the
+latest browser replay then returned the correct 5 December 2028 unapproved
+proposal and 20 November 2028 signed deadline with PDF, Word and Excel citations.
+These were evidence-linked, not deterministically fact-verified. The latest
+uncut video is 5:32 at 1920x1080; an older 5:48 uncut video containing the false
+absence is retained locally. The improvement remains unproven across unseen
+documents and repeated provider runs.
 
 ## Security and reliability review
 
