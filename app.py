@@ -17,7 +17,7 @@ from document_agent.db import connect
 from document_agent.file_manager import folder_files, remove_document
 from document_agent.ingest import ingest_folder
 from document_agent.source_viewer import local_pdf_page, source_detail
-from document_agent.tools import extract_dates, list_documents, query_spreadsheet
+from document_agent.tools import TOOLS, extract_dates, list_documents, query_spreadsheet
 from document_agent.ui_format import display_safe_rows
 from document_agent.uploads import save_uploaded_file
 
@@ -364,6 +364,10 @@ if "last_answer" in st.session_state:
                     if checked_comparison else
                     status_labels.get(answer.verification_status, "Unverified"))
     st.caption("Answer status: " + status_label)
+    model_tool_count = sum(call.get("name") in TOOLS and
+                           call.get("origin") != "application"
+                           for call in answer.tool_calls)
+    st.caption(f"Model document-tool calls: {model_tool_count}")
     st.markdown(answer.text)
     st.subheader("Source references")
     candidate_sources = (answer.structured or {}).get("candidate_sources", [])
