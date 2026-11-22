@@ -45,6 +45,40 @@ def _clean(value: object) -> str:
     return text[:12000]
 
 
+def summarize_cases(rows: list[dict]) -> dict:
+    """Separate cited answers, cautious abstentions and provider failures.
+
+    Never count an empty citation list as proof of source resolution. An answer
+    with all labeled sources is not necessarily semantically correct.
+    """
+    cited = [row for row in rows if row.get("actual_citations")]
+    return {
+        "attempted": len(rows),
+        "provider_errors": sum("provider_error" in row for row in rows),
+        "provider_http_402": sum(
+            row.get("provider_error", {}).get("http_status") == 402 for row in rows),
+        "provider_http_429": sum(
+            row.get("provider_error", {}).get("http_status") == 429 for row in rows),
+        "answers_with_citations": len(cited),
+        "answers_without_citations": sum(
+            "provider_error" not in row and not row.get("actual_citations")
+            for row in rows),
+        "verified_source_citations": sum(
+            row.get("all_sources_resolve") is True for row in cited),
+        "expected_sources_covered": sum(
+            row.get("all_expected_sources_covered") is True for row in rows),
+        "critical_attempted": sum(bool(row.get("critical")) for row in rows),
+        "critical_source_covered": sum(
+            bool(row.get("critical")) and
+            row.get("all_expected_sources_covered") is True for row in rows),
+        "unverified": sum(row.get("verification_status") == "unverified"
+                          for row in rows),
+        "actual_model_tool_cases": sum(row.get("model_tool_calls", 0) > 0
+                                       for row in rows),
+        "semantic_correctness": "manual review required",
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, required=True)
@@ -112,24 +146,7 @@ def main() -> int:
         output = args.output / "acceptance_results.json"
 
         def save() -> None:
-            rows = report["cases"]
-            report["summary"] = {
-                "attempted": len(rows),
-                "provider_errors": sum("provider_error" in x for x in rows),
-                "verified_source_citations": sum(x.get("all_sources_resolve", False)
-                                                 for x in rows),
-                "expected_sources_covered": sum(x.get("all_expected_sources_covered", False)
-                                                for x in rows),
-                "critical_attempted": sum(x["critical"] for x in rows),
-                "critical_source_covered": sum(
-                    x["critical"] and x.get("all_expected_sources_covered", False)
-                    for x in rows),
-                "unverified": sum(x.get("verification_status") == "unverified"
-                                  for x in rows),
-                "actual_model_tool_cases": sum(x.get("model_tool_calls", 0) > 0
-                                               for x in rows),
-                "semantic_correctness": "manual review required",
-            }
+            report["summary"] = summarize_cases(report["cases"])
             output.write_text(json.dumps(report, indent=2, ensure_ascii=False),
                               encoding="utf-8")
 
@@ -162,7 +179,7 @@ def main() -> int:
                         "retrieval_warning": call.get("retrieval_warning"),
                         "semantic_matches": call.get("semantic_matches")
                     } for call in answer.tool_calls],
-                    "all_sources_resolve": all(
+                    "all_sources_resolve": bool(actual) and all(
                         "error" not in get_evidence(conn, c) for c in actual),
                     "all_expected_sources_covered": all(
                         any(_citation_matches(gold, source) for source in actual)
