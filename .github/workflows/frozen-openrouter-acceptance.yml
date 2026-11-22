@@ -2,12 +2,6 @@ name: Frozen 44-question OpenRouter Gemma 4 acceptance
 # Post-citation-recovery rerun: preserve the original frozen question labels.
 
 on:
-  push:
-    branches:
-      - feature/bounded-self-recovery
-    paths:
-      - scripts/run_frozen_acceptance.py
-      - .github/workflows/frozen-openrouter-acceptance.yml
   workflow_dispatch:
 
 permissions:
