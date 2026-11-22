@@ -111,19 +111,25 @@ def main() -> int:
                 expect(ask_button).to_be_enabled(timeout=15000)
                 ask_button.click()
                 try:
-                    page.get_by_text(re.compile(r"Answer status:")).first.wait_for(
-                        state="visible", timeout=130000
+                    # An API failure is a measured failure, not a 130-second timeout.
+                    page.wait_for_function(
+                        """() => document.body.innerText.includes('Answer status:')
+                          || document.body.innerText.includes('Provider diagnostic (status, code, request phase only)')""",
+                        timeout=130000,
                     )
                     page.wait_for_timeout(600)
                     body = page.locator("body").inner_text()
-                    excerpt = body.rsplit("Answer status:", 1)[-1].split(
+                    error_seen = "Provider diagnostic (status, code, request phase only)" in body
+                    excerpt = (body.rsplit("Answer status:", 1)[-1].split(
                         "Source references", 1
-                    )[0].strip()[:3000]
+                    )[0].strip()[:3000] if not error_seen else
+                        "Provider diagnostic:" + body.rsplit(
+                            "Provider diagnostic (status, code, request phase only)", 1
+                        )[-1][:1000])
                     tool_match = re.search(r"Model document-tool calls:\s*(\d+)", body)
                     model_calls = int(tool_match.group(1)) if tool_match else 0
                     source_links = page.get_by_role("button", name="Open source").count()
-                    provider_ok = bool(excerpt and
-                                       "provider diagnostic" not in excerpt.casefold())
+                    provider_ok = bool(excerpt and not error_seen)
                     if needs_model:
                         report["live_provider_cases"] += 1
                         provider_ok = provider_ok and model_calls > 0 and source_links > 0
