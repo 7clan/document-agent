@@ -17,6 +17,7 @@ from typing import Any
 from dotenv import load_dotenv
 
 from .claim_verifier import _explicit_files, parse_answer, question_parts, validate_claims
+from .guardrails import exact_item_answer, unreadable_attachment_answer
 from .query_plan import plan_question
 from .recovery import recover_answer
 from .retrieval_ids import requested_references
@@ -2736,6 +2737,14 @@ def ask(conn: sqlite3.Connection, question: str, max_rounds: int = 8,
     if not conn.execute("SELECT 1 FROM documents WHERE status='ready' LIMIT 1").fetchone():
         return Answer("No readable documents are indexed. Ingest a folder first.", [], [])
     plan = plan_question(conn, question)
+    # Application-owned scope decisions precede any LLM request. A request about
+    # one exact BOQ identifier must not degrade into an unrelated broad total.
+    guarded = unreadable_attachment_answer(conn, question, plan)
+    if guarded is None:
+        guarded = exact_item_answer(conn, question, plan)
+    if guarded is not None:
+        guarded.tool_calls.insert(0, plan.audit())
+        return guarded
     indexed = [(row["path"], row["kind"]) for row in conn.execute(
         "SELECT path,kind FROM documents WHERE status='ready' ORDER BY path")]
     paths = [path for path, _ in indexed]
