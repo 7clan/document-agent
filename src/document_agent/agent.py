@@ -2683,8 +2683,17 @@ def _recover_with_compact_evidence(conn: sqlite3.Connection, question: str,
         return answer
     prompt = (_scoped_question(question) + "\n\nOriginal indexed passages:\n" + context +
               "\n\nCorrect only unsupported or uncited parts of the answer. "
-              "Use exact listed citations for each atomic claim. If a fact is not "
-              "established, say so. Return only JSON with answer, insufficient, claims.")
+              "Use exact listed citations for each atomic claim, not invented names "
+              "or a location from some other tool call. If a fact is not "
+              "established, say so. Return ONLY one JSON object with keys "
+              "answer (string), insufficient (boolean), and claims (array). "
+              "Each claims entry MUST be an object with text (string) and "
+              "supports (array of objects each having citation as a string). "
+              "For every supported factual claim, put the full exact original "
+              "location string from the supplied evidence into supports; do not "
+              "leave supports empty for a factual claim that the evidence proves. "
+              "If no citation establishes a claim, omit the unsupported claim or "
+              "mark the overall answer insufficient=true. No markdown fences.")
     if provider == "gemini":
         from google import genai
         from google.genai import types
