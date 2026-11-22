@@ -25,6 +25,7 @@ jobs:
           if [ -z "$GEMINI_API_KEY" ]; then
             echo "LIVE MODEL BLOCKED: repository secret GEMINI_API_KEY is missing."
             echo "No recording will be presented as a live-model test."
+            exit 1
           else
             echo "A provider key is configured. Attempting real model calls."
           fi
