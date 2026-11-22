@@ -177,7 +177,20 @@ def search_documents(conn: sqlite3.Connection, query: str, limit: int = 20,
     if selected == "keyword":
         return _keyword_search_documents(conn, query, limit=max_results, file=file)
     candidate_limit = min(max(max_results * 4, 20), 100)
-    lexical = _keyword_search_documents(conn, query, limit=candidate_limit, file=file)
+    # Common question words match almost every long passage. In rank fusion,
+    # those weak lexical hits can otherwise bury a genuinely similar row.
+    question_words = {
+        "a", "an", "and", "are", "as", "at", "be", "been", "by", "can",
+        "did", "do", "does", "for", "from", "has", "have", "how", "in",
+        "is", "it", "of", "on", "or", "our", "the", "their", "there",
+        "these", "this", "those", "to", "was", "were", "what", "when",
+        "where", "which", "who", "why", "with", "would", "you",
+    }
+    useful_terms = [term for term in re.findall(r"[\w]+(?:[-_][\w]+)*", query)
+                    if term.casefold() not in question_words]
+    lexical_query = " ".join(useful_terms) if useful_terms else query
+    lexical = _keyword_search_documents(conn, lexical_query,
+                                        limit=candidate_limit, file=file)
     if "error" in lexical or not lexical.get("results") and not query.strip():
         return lexical
 

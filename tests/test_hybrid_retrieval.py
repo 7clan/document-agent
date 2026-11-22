@@ -128,3 +128,52 @@ def test_rank_fusion_deduplicates():
         [{"citation": "B", "score": .9}, {"citation": "C", "score": .8}], 3)
     assert len(results) == 3
     assert {hit["citation"] for hit in results} == {"A", "B", "C"}
+
+
+def test_common_question_words_do_not_bury_semantic_spreadsheet_row(monkeypatch):
+    class ConverterEncoder:
+        def encode(self, texts, **kwargs):
+            return [[1., 0.] if "inverter" in text.lower() or
+                    "power converter" in text.lower() else [0., 1.]
+                    for text in texts]
+
+    conn = connect(":memory:")
+    conn.execute("INSERT INTO documents(path,kind,status) VALUES('Items.xlsx','xlsx','ready')")
+    conn.execute("INSERT INTO sheet_rows(document_id,sheet,row_num,cells_json) "
+                 "VALUES(1,'Costs',2,?)", (json.dumps({
+                     "A": {"value": "AX-203"},
+                     "B": {"value": "Power converter package"},
+                     "C": {"value": 1200000},
+                 }),))
+    for index in range(3):
+        name = f"Distractor{index}.pdf"
+        conn.execute("INSERT INTO documents(path,kind,status) VALUES(?,'pdf','ready')",
+                     (name,))
+        conn.execute("INSERT INTO passages(document_id,page,chunk,text) "
+                     "VALUES(?,?,0,'The unrelated project note.')", (index + 2, 1))
+    conn.commit()
+    monkeypatch.setattr(hybrid, "embedding_model", ConverterEncoder)
+
+    query = "What did the inverter assembly cost?"
+    assert not any(hit["citation"].startswith("Items.xlsx") for hit in
+                   search_documents(conn, query, limit=3, mode="keyword")["results"])
+    result = search_documents(conn, query, limit=3, mode="hybrid")
+    assert result["retrieval_mode"] == "hybrid"
+    assert result["results"][0]["citation"] == "Items.xlsx | Costs | row 2"
+
+
+def test_hybrid_lexical_filter_keeps_exact_item_reference(monkeypatch):
+    conn = seed()
+    conn.execute("UPDATE sheet_rows SET cells_json=? WHERE row_num=2", (json.dumps({
+        "A": {"value": "EL-103"}, "B": {"value": 890000},
+    }),))
+    conn.execute("INSERT INTO sheet_rows(document_id,sheet,row_num,cells_json) "
+                 "VALUES((SELECT id FROM documents WHERE path='BOQ.xlsx'),'Sheet1',3,?)",
+                 (json.dumps({"A": {"value": "EL-1030"},
+                              "B": {"value": 2400000}}),))
+    conn.commit()
+    monkeypatch.setattr(hybrid, "embedding_model", FakeEncoder)
+    result = search_documents(conn, "What is the cost of EL-103?", mode="hybrid")
+    assert result["results"]
+    assert all(hit["citation"] != "BOQ.xlsx | Sheet1 | row 3"
+               for hit in result["results"])

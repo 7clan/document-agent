@@ -17,7 +17,9 @@ validation, not retrieval.
    stale vectors; unchanged records are reused.
 3. **Retrieval:** PDF page chunks, Word blocks and Excel rows are independently embedded.
    Semantic top-k is merged with lexical top-k using reciprocal rank fusion, with a
-   2:1 weight favoring lexical matches. File filters remain enforced.
+   2:1 weight favoring lexical matches. Common question words are omitted from the
+   lexical side so they cannot bury a relevant semantic match. Exact item IDs and
+   file filters remain enforced.
 4. **Agent integration:** The existing `search_documents` tool uses the
    configured retrieval mode and returns the same source citations; the model
    does not choose the mode. `get_evidence` still resolves the original indexed
@@ -59,9 +61,10 @@ independently labeled `expected_citations`.
 
 ## Limitations and future improvements
 
-- **Not a real-model benchmark:** Fake-vector tests validate integration, not semantic
-  search quality. Measure recall@k and ranking quality with a labeled, unseen
-  collection before claiming improved accuracy.
+- **Limited evaluation:** Offline fake-vector tests validate integration, while the
+  real MiniLM benchmark measures retrieval on a small fictional corpus. Larger,
+  independently labeled collections of unfamiliar documents are needed before
+  claiming reliable gains in real-world answer accuracy.
 - **Scalability:** SQLite stores vectors as JSON, and the initial semantic
   implementation performs a linear cosine scan. Migrate to an ANN/vector
   extension for very large corpora after profiling real workloads.
