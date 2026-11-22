@@ -20,7 +20,7 @@ def audit(label: str, args: list[str], timeout: int = 240) -> dict:
     try:
         run = subprocess.run(
             ["pip-audit", "-f", "json", "-o", str(output), "--progress-spinner", "off",
-             *args], capture_output=True, text=True, timeout=timeout,
+             *args], check=False, capture_output=True, text=True, timeout=timeout,
         )
         payload = json.loads(output.read_text(encoding="utf-8")) if output.exists() else {}
         deps = payload.get("dependencies", []) if isinstance(payload, dict) else []
@@ -34,15 +34,15 @@ def audit(label: str, args: list[str], timeout: int = 240) -> dict:
                 "affected_packages": len(vulnerable),
                 "advisories": sum(len(x["vulns"]) for x in vulnerable),
                 "findings": vulnerable,
-                "tool_error": run.stderr.strip()[:400] if run.returncode not in (0, 1)
-                              else ""}
+                "tool_error": run.stderr.strip()[:600] if run.returncode not in (0, 1)
+                              or not deps else ""}
     except Exception as exc:  # noqa: BLE001
         return {"tool_error_type": type(exc).__name__, "tool_error": str(exc)[:300]}
 
 
 def main() -> int:
     check = subprocess.run(
-        [sys.executable, "-m", "pip", "check"], capture_output=True, text=True,
+        [sys.executable, "-m", "pip", "check"], check=False, capture_output=True, text=True,
     )
     report = {
         "created_utc": datetime.now(UTC).isoformat(),
@@ -52,7 +52,7 @@ def main() -> int:
         # Review pinned Windows dependency versions even though this CI runner
         # is Linux. The requirements lock is pin-only, not hashes.
         "windows_lock_pinned": audit(
-            "windows_lock_pinned", ["-r", str(ROOT / "requirements.lock"), "--no-deps"]),
+            "windows_lock_pinned", ["-r", str(ROOT / "requirements.lock"), "--no-deps", "--disable-pip"]),
     }
     report["release_pass"] = (
         check.returncode == 0
