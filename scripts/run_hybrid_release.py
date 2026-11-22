@@ -9,11 +9,12 @@ import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
 
+from evaluate_retrieval import evaluate
+
 from document_agent.agent import ask, provider_error_diagnostic
 from document_agent.db import connect
 from document_agent.hybrid import embedding_model, sync_embeddings
 from document_agent.ingest import ingest_folder
-from evaluate_retrieval import evaluate
 
 ROOT = Path(__file__).resolve().parents[1]
 GOLD = ROOT / "evaluation" / "release_candidate_ground_truth.json"
