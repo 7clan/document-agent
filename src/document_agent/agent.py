@@ -17,7 +17,11 @@ from typing import Any
 from dotenv import load_dotenv
 
 from .claim_verifier import _explicit_files, parse_answer, question_parts, validate_claims
+from .query_plan import plan_question
+from .recovery import recover_answer
+from .retrieval_ids import requested_references
 from .semantic_verifier import verify_judgement
+from .spreadsheet import _records as _boq_records
 from .tools import (
     DATE_REGEX,
     TOOL_SCHEMAS,
@@ -453,6 +457,18 @@ def _date_keys(text: str) -> set[str]:
         normalized, ambiguous = _date_info(match.group())
         keys.add(normalized if normalized and not ambiguous else literal)
     return keys
+
+
+def _explicit_money(text: str) -> set[Decimal]:
+    amounts = set()
+    pattern = re.compile(r"(?i)\b(?:SAR|AED|USD|EUR|GBP)\s*"
+                         r"([\d,]+(?:\.\d+)?)(?:\s*(million|billion|thousand))?")
+    for match in pattern.finditer(text):
+        factor = {None: 1, "thousand": 1000, "million": 1000000,
+                  "billion": 1000000000}[match.group(2).lower()
+                                             if match.group(2) else None]
+        amounts.add(Decimal(match.group(1).replace(",", "")) * factor)
+    return amounts
 
 
 def _claim_excerpt(original: str, claim: str, width: int = 700) -> str:
@@ -1213,8 +1229,10 @@ def _question_filter(question: str, original: dict[str, Any]) -> dict[str, Any]:
             if key in {"column_hint", "operator", "value", "file", "sheet", "currency",
                        "text_filter"}}
     lower = question.lower()
+    normal_question = re.sub(r"[\W_]+", " ", lower)
     for key in ("file", "sheet"):
-        if args.get(key) and str(args[key]).lower() not in lower:
+        if args.get(key) and re.sub(r"[\W_]+", " ", str(args[key]).lower()) not in (
+                normal_question if key == "sheet" else lower):
             args.pop(key)
     if args.get("text_filter") and str(args["text_filter"]).lower() not in lower:
         args.pop("text_filter")
@@ -1257,14 +1275,51 @@ def _question_filter(question: str, original: dict[str, Any]) -> dict[str, Any]:
     return args
 
 
+def _infer_sheet_scope(conn: sqlite3.Connection, question: str,
+                       args: dict[str, Any]) -> dict[str, Any]:
+    """Use an explicitly named, unique worksheet as a bounded numeric scope."""
+    if args.get("file") and args.get("sheet"):
+        return args
+    normalized = " " + re.sub(r"[\W_]+", " ", question.casefold()).strip() + " "
+    matches = []
+    for row in conn.execute("SELECT DISTINCT d.path,s.sheet FROM sheet_rows s "
+                            "JOIN documents d ON d.id=s.document_id "
+                            "WHERE d.status='ready'"):
+        name = re.sub(r"[\W_]+", " ", row["sheet"].casefold()).strip()
+        if name and (" " in name or re.search(r"(?i)\bsheet\b", question)) and (
+                f" {name} " in normalized):
+            matches.append((row["path"], row["sheet"]))
+    if len(matches) == 1:
+        return {**args, "file": matches[0][0], "sheet": matches[0][1]}
+    return args
+
+
+def _infer_exact_item_file(conn: sqlite3.Connection, identifier: str,
+                           args: dict[str, Any]) -> dict[str, Any]:
+    """Scope a unique indexed BOQ identifier without prefix matching."""
+    if args.get("file"):
+        return args
+    files = {row["file"] for row in _boq_records(conn, "", "")
+             if any(str(cell.get("value", "")).casefold() == identifier.casefold()
+                    for cell in row["cells"].values())}
+    return {**args, "file": next(iter(files))} if len(files) == 1 else args
+
+
 def _verified_numeric_answer(conn: sqlite3.Connection, question: str,
                              args: dict[str, Any], trace: list[dict[str, Any]]) -> Answer:
-    verified_args = _question_filter(question, args)
+    verified_args = _infer_sheet_scope(conn, question, _question_filter(question, args))
     item_match = re.search(r"(?i)\b(?:line\s+)?item\s+([\w.-]+)\b", question)
     # A generic phrase such as "cost item strictly above" has no item identifier.
     # Only enter the single-item path for a code containing a digit.
     if item_match and not any(char.isdigit() for char in item_match.group(1)):
         item_match = None
+    if item_match is None:
+        references = requested_references(question)
+        if len(references) == 1:
+            item_match = re.search(r"(?<![\w])(" + re.escape(references[0]) +
+                                   r")(?![\w])", question, re.IGNORECASE)
+    if item_match is not None:
+        verified_args = _infer_exact_item_file(conn, item_match.group(1), verified_args)
     if item_match and verified_args.get("operator") in {"gt", "gte", "lt", "lte", "eq"}:
         identifier = item_match.group(1)
         item_args = {**verified_args, "operator": "all", "value": 0,
@@ -1601,17 +1656,39 @@ def _source_linked_answer(conn: sqlite3.Connection, text: str, citations: list[s
                 original_texts.append(original)
                 sources.append(citation)
         unmatched_dates = _date_keys(statement) - _date_keys("\n".join(original_texts))
-        status = "evidence_linked" if local and not missing and not unmatched_dates else "unverified"
+        source_text = "\n".join(original_texts)
+        source_refs = set(requested_references(source_text))
+        unmatched_refs = set(requested_references(statement)) - source_refs
+        claimed_money = _explicit_money(statement)
+        source_money = {Decimal(match.group().replace(",", "")) for match in
+                        re.finditer(r"(?<![\w])\d[\d,]*(?:\.\d+)?(?![\w])",
+                                    source_text)}
+        source_money.update(_explicit_money(source_text))
+        question_money = _explicit_money(question)
+        # Source-linked prose may describe a calculation, but the source does
+        # not authenticate an invented explicit amount or identifier.
+        unmatched_money = claimed_money - source_money - question_money
+        absence_claim = bool(re.search(
+            r"(?i)\b(?:not found|not documented|does not (?:mention|state|contain)|"
+            r"no (?:information|record|evidence) (?:of|for))\b", statement))
+        status = ("evidence_linked" if local and not missing and not unmatched_dates
+                  and not unmatched_refs and not unmatched_money and not absence_claim
+                  else "unverified")
         reason = ("A cited source was not retrieved or had no indexed passage"
                   if missing or not local else
                   "Claimed date absent from cited passages" if unmatched_dates else
+                  "Identifier absent from cited passages" if unmatched_refs else
+                  "Amount absent from cited passages" if unmatched_money else
+                  "Absence cannot be established from selected passages" if absence_claim else
                   "Retrieved source; model interpretation was not checked")
         claims.append({"text": statement, "status": status,
+                       "had_supports": bool(supports),
                        "sources": [item["citation"] for item in local],
                        "quotes": local, "reason": reason})
         reference = ", ".join(item["citation"] for item in local)
         rendered.append((f"- {statement} — {reference}" +
-                         (" *(date absent from cited passages)*" if unmatched_dates else
+                         (" *(explicit value absent from cited passages)*"
+                          if unmatched_dates or unmatched_refs or unmatched_money else
                           " *(another source reference unavailable)*" if missing else ""))
                         if reference else
                         f"- {statement} *(source reference unavailable)*")
@@ -1620,6 +1697,13 @@ def _source_linked_answer(conn: sqlite3.Connection, text: str, citations: list[s
     candidates = ([cite for cite in retrieved_list if not cite.endswith(" | document")]
                   if payload["insufficient"] else [])
     if payload["insufficient"]:
+        if candidates:
+            # A few retrieved passages cannot establish corpus-wide absence.
+            # Do not headline the model's unsupported "not found" statement.
+            result_text = ("The model could not establish a complete answer from the "
+                           "retrieved evidence.")
+        else:
+            result_text = "No supporting evidence was retrieved for this answer."
         result_text += "\n\nThe model reported insufficient evidence."
         if candidates:
             result_text += (" Indexed source locations were retrieved; the model's "
@@ -1829,11 +1913,14 @@ def _needs_numeric_query(question: str) -> bool:
     if re.search(r"\bcontract\b", lower):
         return False
     subject = re.search(r"\b(?:boqs?|spreadsheets?|cost items?|line items?|items?|equipment|"
-                        r"materials?)\b", lower)
+                        r"materials?|amounts|subtotals?)\b", lower)
     condition = re.search(r"\b(?:above|below|over|under|greater|less|exceeds?|costing|"
                           r"million|amount|sum|total|highest|largest|expensive|prices?)\b|[<>]",
                           lower)
-    return bool(subject and condition)
+    exact_currency_item = bool(requested_references(question) and
+                               re.search(r"\b(?:SAR|AED|USD|EUR|GBP)\b", question,
+                                         re.IGNORECASE))
+    return bool(condition and (subject or exact_currency_item))
 
 
 def _has_numeric_result(trace: list[dict[str, Any]]) -> bool:
@@ -1904,6 +1991,8 @@ def _ask_gemini(conn: sqlite3.Connection, question: str, max_rounds: int,
     stalled = 0
     evidence_retry = False
     format_retry = False
+    tool_usage_prompted = False
+    recovery_used = 0
     financial_context_sent = False
     question_date_context_sent = False
     financial_context = ""
@@ -1972,22 +2061,45 @@ def _ask_gemini(conn: sqlite3.Connection, question: str, max_rounds: int,
                     return _source_linked_answer(conn, text, citations, tool_calls,
                                                  question, numeric_args,
                                                  _has_dates_result(tool_calls))
+                if tool_usage_prompted or recovery_used >= 2:
+                    tool_calls.append({"name": "host_numeric_fallback", "ok": True,
+                                       "origin": "application",
+                                       "reason": "Model did not call the requested numeric tool"})
+                    return _source_linked_answer(conn, text, citations, tool_calls,
+                                                 question, numeric_args,
+                                                 _has_dates_result(tool_calls))
+                tool_usage_prompted = True
+                recovery_used += 1
+                tool_calls.append({"name": "tool_usage_retry", "ok": True,
+                                   "origin": "application", "tool": "query_spreadsheet"})
                 contents.append(types.Content(role="model", parts=[types.Part.from_text(text=text)]))
                 contents.append(types.Content(role="user", parts=[types.Part.from_text(
                     text="Call query_spreadsheet for the numeric BOQ filter before answering. "
                          "Use strict greater-than for 'above'.")]))
                 continue
             if _needs_dates_query(question) and not _has_dates_result(tool_calls):
+                if tool_usage_prompted or recovery_used >= 2:
+                    tool_calls.append({"name": "host_dates_fallback", "ok": True,
+                                       "origin": "application",
+                                       "reason": "Model did not call the requested date tool"})
+                    return _source_linked_answer(conn, text, citations, tool_calls,
+                                                 question, numeric_args, False)
+                tool_usage_prompted = True
+                recovery_used += 1
+                tool_calls.append({"name": "tool_usage_retry", "ok": True,
+                                   "origin": "application", "tool": "extract_dates"})
                 contents.append(types.Content(role="model", parts=[types.Part.from_text(text=text)]))
                 contents.append(types.Content(role="user", parts=[types.Part.from_text(
                     text="Call extract_dates before answering the date question.")]))
                 continue
             parsed = parse_answer(text)
             if (parsed and parsed["insufficient"] and citations and not evidence_retry
+                    and recovery_used < 2
                     and not any(call.get("name") == "get_evidence" and call.get("ok")
                                 for call in tool_calls)
                     and time.monotonic() < deadline):
                 evidence_retry = True
+                recovery_used += 1
                 tool_calls.append({"name": "evidence_retry", "ok": True,
                                    "reason": "Model reported insufficiency after source retrieval"})
                 context, _ = _evidence_handoff(conn, citations, question, set())
@@ -1999,8 +2111,10 @@ def _ask_gemini(conn: sqlite3.Connection, question: str, max_rounds: int,
                 config = types.GenerateContentConfig(system_instruction=system_instruction,
                                                      temperature=0)
                 continue
-            if citations and parsed is None and not format_retry and time.monotonic() < deadline:
+            if (citations and parsed is None and not format_retry and recovery_used < 2
+                    and time.monotonic() < deadline):
                 format_retry = True
+                recovery_used += 1
                 text = compact_final("gemini_format_recovery")
             return _source_linked_answer(conn, text, citations, tool_calls, question,
                                          numeric_args, _has_dates_result(tool_calls))
@@ -2105,7 +2219,9 @@ def _ask_gemini(conn: sqlite3.Connection, question: str, max_rounds: int,
     if time.monotonic() >= deadline:
         return Answer("Provider time budget reached before answer generation.", [], tool_calls)
     text = compact_final("gemini_tool_budget_final")
-    if citations and parse_answer(text) is None and time.monotonic() < deadline:
+    if (citations and parse_answer(text) is None and recovery_used < 2
+            and time.monotonic() < deadline):
+        recovery_used += 1
         text = compact_final("gemini_format_recovery")
     return _source_linked_answer(conn, text, citations,
                                  tool_calls, question, numeric_args,
@@ -2183,6 +2299,7 @@ def _ask_openai(conn: sqlite3.Connection, question: str, max_rounds: int,
     force_numeric = False
     format_retry = False
     evidence_retry = False
+    tool_usage_prompted = False
     financial_context_sent = False
     question_date_context_sent = False
     financial_context = ""
@@ -2191,6 +2308,7 @@ def _ask_openai(conn: sqlite3.Connection, question: str, max_rounds: int,
     native_schema = provider == "openai"
     parse_recovered = False
     transient_recovered = False
+    recovery_used = 0
     cache: dict[str, dict[str, Any]] = {}
     seen: set[str] = set()
     sent_evidence: set[tuple[str, str]] = set()
@@ -2199,7 +2317,7 @@ def _ask_openai(conn: sqlite3.Connection, question: str, max_rounds: int,
     deadline = time.monotonic() + (100 if ollama_gpt else 75)
 
     def send(request: dict[str, Any], phase: str) -> Any:
-        nonlocal parse_recovered, transient_recovered
+        nonlocal parse_recovered, transient_recovered, recovery_used
         try:
             return _rate_limited_create(client.chat.completions.create,
                                         request, provider, deadline,
@@ -2212,9 +2330,10 @@ def _ask_openai(conn: sqlite3.Connection, question: str, max_rounds: int,
             status = getattr(exc, "status_code", None)
             transient = (status in {500, 502, 503, 504}
                          or type(exc).__name__ == "APITimeoutError")
-            if (ollama_gpt and transient and not transient_recovered
+            if (ollama_gpt and transient and not transient_recovered and recovery_used < 2
                     and time.monotonic() + 2 < deadline):
                 transient_recovered = True
+                recovery_used += 1
                 precise = [cite for cite in _verified_sources(conn, citations)
                            if not cite.endswith(" | document")]
                 need_numeric = _needs_numeric_query(question) and not _has_numeric_result(trace)
@@ -2253,9 +2372,10 @@ def _ask_openai(conn: sqlite3.Connection, question: str, max_rounds: int,
                     raise
             if provider != "groq" or not _output_parse_failed(exc):
                 raise
-            if parse_recovered:
+            if parse_recovered or recovery_used >= 2:
                 raise ProviderOutputParseError(phase) from None
             parse_recovered = True
+            recovery_used += 1
             need_numeric = _needs_numeric_query(question) and not _has_numeric_result(trace)
             need_dates = _needs_dates_query(question) and not _has_dates_result(trace)
             precise = [cite for cite in _verified_sources(conn, citations)
@@ -2325,9 +2445,10 @@ def _ask_openai(conn: sqlite3.Connection, question: str, max_rounds: int,
                                              numeric_args, _has_dates_result(trace))
             raise
         except Exception as exc:  # Retry only unsupported schema errors.
-            if not native_schema or not _schema_unsupported(exc):
+            if not native_schema or not _schema_unsupported(exc) or recovery_used >= 2:
                 raise
             native_schema = False
+            recovery_used += 1
             request.pop("response_format")
             trace.append({"name": "structured_output_fallback", "ok": True,
                           "reason": "Native JSON schema unavailable; instructed JSON remains required"})
@@ -2336,19 +2457,41 @@ def _ask_openai(conn: sqlite3.Connection, question: str, max_rounds: int,
         if not msg.tool_calls:
             text = (msg.content or "").strip()
             if _needs_numeric_query(question) and not _has_numeric_result(trace):
+                if tool_usage_prompted or recovery_used >= 2:
+                    trace.append({"name": "host_numeric_fallback", "ok": True,
+                                  "origin": "application",
+                                  "reason": "Model did not call the requested numeric tool"})
+                    return _source_linked_answer(conn, text, citations, trace, question,
+                                                 numeric_args, _has_dates_result(trace))
+                tool_usage_prompted = True
+                recovery_used += 1
+                trace.append({"name": "tool_usage_retry", "ok": True,
+                              "origin": "application", "tool": "query_spreadsheet"})
                 messages.append({"role": "user", "content":
                                  "Call query_spreadsheet with the BOQ numeric filter before "
                                  "answering. Use strict greater-than for 'above'."})
                 force_numeric = True
                 continue
             if _needs_dates_query(question) and not _has_dates_result(trace):
+                if tool_usage_prompted or recovery_used >= 2:
+                    trace.append({"name": "host_dates_fallback", "ok": True,
+                                  "origin": "application",
+                                  "reason": "Model did not call the requested date tool"})
+                    return _source_linked_answer(conn, text, citations, trace, question,
+                                                 numeric_args, False)
+                tool_usage_prompted = True
+                recovery_used += 1
+                trace.append({"name": "tool_usage_retry", "ok": True,
+                              "origin": "application", "tool": "extract_dates"})
                 messages.append({"role": "user", "content": "Call extract_dates before answering."})
                 continue
             parsed = parse_answer(text)
             if (parsed and parsed["insufficient"] and citations and not evidence_retry
+                    and recovery_used < 2
                     and not any(call.get("name") == "get_evidence" and call.get("ok")
                                 for call in trace)):
                 evidence_retry = True
+                recovery_used += 1
                 format_retry = True
                 trace.append({"name": "evidence_retry", "ok": True,
                               "reason": "Model reported insufficiency after source retrieval"})
@@ -2366,8 +2509,9 @@ def _ask_openai(conn: sqlite3.Connection, question: str, max_rounds: int,
             if (citations and not _needs_numeric_query(question)
                     and not _needs_dates_query(question)
                     and parsed is None and not format_retry
-                    and not parse_recovered):
+                    and not parse_recovered and recovery_used < 2):
                 format_retry = True
+                recovery_used += 1
                 trace.append({"name": "format_retry", "ok": True,
                               "reason": "Provider answer was not valid JSON; one generation retry"})
                 messages = _compact_recovery_messages(conn, question, citations,
@@ -2525,6 +2669,57 @@ def _ask_openai(conn: sqlite3.Connection, question: str, max_rounds: int,
                                  _has_dates_result(trace))
 
 
+def _recover_with_compact_evidence(conn: sqlite3.Connection, question: str,
+                                   citations: list[str], answer: Answer,
+                                   provider: str, model_override: str | None) -> Answer:
+    """One same-provider final request using only original retrieved evidence.
+
+    Recovery never repeats tool history, enables tools, or treats malformed
+    model output as authenticated evidence.
+    """
+    context, included = _evidence_handoff(conn, citations, question, set(), budget=7000)
+    if not included:
+        return answer
+    prompt = (_scoped_question(question) + "\n\nOriginal indexed passages:\n" + context +
+              "\n\nCorrect only unsupported or uncited parts of the answer. "
+              "Use exact listed citations for each atomic claim. If a fact is not "
+              "established, say so. Return only JSON with answer, insufficient, claims.")
+    if provider == "gemini":
+        from google import genai
+        from google.genai import types
+
+        key = os.getenv("GEMINI_API_KEY", "")
+        model = model_override or os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+        client = genai.Client(api_key=key, http_options=types.HttpOptions(timeout=30000))
+        response = client.models.generate_content(
+            model=model, contents=prompt,
+            config=types.GenerateContentConfig(
+                system_instruction=_system_prompt(model, provider), temperature=0,
+                response_mime_type="application/json"))
+        text = _gemini_text(response)
+    else:
+        from openai import OpenAI
+
+        key, model, base_url = _compatible_config(provider, model_override)
+        client = OpenAI(api_key=key, timeout=30.0, max_retries=0,
+                        **({"base_url": base_url} if base_url else {}))
+        request: dict[str, Any] = {
+            "model": model, "temperature": 0, "tool_choice": "none",
+            "messages": [{"role": "system", "content": _system_prompt(model, provider)},
+                         {"role": "user", "content": prompt}],
+        }
+        answer_format = _answer_format(provider, model, provider == "openai")
+        if answer_format:
+            request["response_format"] = answer_format
+        response = client.chat.completions.create(**request)
+        text = (response.choices[0].message.content or "").strip()
+    if parse_answer(text) is None:
+        raise ValueError("Recovery returned no valid structured answer")
+    trace = [*answer.tool_calls, {"name": "recovery_compact_final", "ok": True,
+                                  "origin": "application", "source_count": len(included)}]
+    return _source_linked_answer(conn, text, included, trace, question)
+
+
 def ask(conn: sqlite3.Connection, question: str, max_rounds: int = 8,
         *, provider: str | None = None, model: str | None = None) -> Answer:
     if not question.strip():
@@ -2540,6 +2735,7 @@ def ask(conn: sqlite3.Connection, question: str, max_rounds: int = 8,
         )
     if not conn.execute("SELECT 1 FROM documents WHERE status='ready' LIMIT 1").fetchone():
         return Answer("No readable documents are indexed. Ingest a folder first.", [], [])
+    plan = plan_question(conn, question)
     indexed = [(row["path"], row["kind"]) for row in conn.execute(
         "SELECT path,kind FROM documents WHERE status='ready' ORDER BY path")]
     paths = [path for path, _ in indexed]
@@ -2569,10 +2765,27 @@ def ask(conn: sqlite3.Connection, question: str, max_rounds: int = 8,
             f"Unsupported LLM_PROVIDER: {chosen_provider} "
             "(use gemini, openai, groq, ollama_cloud, compatible)"
         )
-    failed = conn.execute("SELECT COUNT(*) FROM documents WHERE status!='ready' "
-                          "OR (kind='pdf' AND error<>'')").fetchone()[0]
+    answer = recover_answer(
+        conn, question, plan, answer,
+        regenerate=lambda citations: _recover_with_compact_evidence(
+            conn, question, citations, answer, chosen_provider, model),
+    )
+    failed_rows = conn.execute(
+        "SELECT path FROM documents WHERE status!='ready' "
+        "OR (kind='pdf' AND error<>'')").fetchall()
+    verified_scope = (answer.structured or {}).get("verified_args", {}).get("file", "")
+    effective_scope = set(plan.document_scope)
+    if verified_scope:
+        effective_scope.add(verified_scope)
+    failed = sum(1 for row in failed_rows if row["path"] in effective_scope
+                 or (not effective_scope and plan.scope_kind == "all_indexed" and
+                     plan.incomplete_blocks_certainty))
     if failed:
-        answer.text = f"Coverage incomplete: {failed} file(s) failed indexing or have unreadable PDF pages.\n\n" + answer.text
-        if answer.verification_status == "deterministically_verified":
+        label = ("Coverage incomplete for this question" if plan.incomplete_blocks_certainty
+                 else "Index note")
+        answer.text = (f"{label}: {failed} file(s) failed indexing or have unreadable "
+                       "PDF pages.\n\n" + answer.text)
+        if (plan.incomplete_blocks_certainty and
+                answer.verification_status == "deterministically_verified"):
             answer.verification_status = "evidence_linked"
     return answer

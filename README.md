@@ -8,6 +8,11 @@ read-only tools, and has provider adapters for Gemini, OpenAI, Groq, and Ollama 
 Live tests used fictional documents; results and limitations are described below.
 Source-linked model prose still needs human review.
 
+**Current release verdict: NOT READY for an unattended interview demonstration.**
+The [final 44-question live evaluation](docs/FINAL_RELEASE_EVALUATION.md) found
+four failed critical cases despite passing automated tests. The application
+remains demonstrable with human review of original sources.
+
 ## Features
 
 - Index a local folder of PDF, `.xlsx`, `.xlsm`, legacy `.xls`, and `.docx` files; nested directories supported.
@@ -18,6 +23,8 @@ Source-linked model prose still needs human review.
 - Store data in a local SQLite database and report per-file corruption/unsupported formats.
 - Six read-only tools: `list_documents`, `inspect_document`, `search_documents`, `query_spreadsheet`,
   `extract_dates`, `get_evidence`.
+- Validated query plans, an application-owned evidence ledger, and at most two
+  bounded recovery attempts when an answer lacks usable evidence or citations.
 - Ollama Cloud (Gemma 4 31B by default), Gemini, OpenAI, or Groq tool-calling loop, with source citations and an audit trace.
 - Streamlit interface plus command-line invocation; offline `pytest` tests.
 
@@ -54,6 +61,13 @@ document-agent ask "List all cost items above SAR 1 million in the BOQs"
 document-agent smoke  # tests real provider function calling with synthetic, nonconfidential text
 python -m streamlit run app.py
 ```
+
+For the **Windows/Python 3.12** dependency snapshot used in final release
+checks, install `requirements.lock` into a fresh virtual environment, then
+install this checkout with `python -m pip install -e . --no-deps`. The ordinary
+`pyproject.toml` installation above remains the supported path for Python 3.11
+and other platforms. The lock pins versions but does not include wheel hashes;
+see the dependency audit in the [final release evaluation](docs/FINAL_RELEASE_EVALUATION.md).
 
 ### Add downloaded documents in the browser (PDF, Excel, Word)
 
@@ -129,11 +143,11 @@ still present in the indexed folder. The citation remains visible beside the
 source content. This helps a user check a model's interpretation; it is
 not an automatic fact-verification verdict.
 
-The active path **does not run the old claim verifier**. It does not judge model
+The active path **does not run the old semantic claim verifier**. It does not judge model
 prose or approval status through broad semantic rules, so correct grouped Excel
 answers are no longer removed by per-row semantic checks. It does check that
-explicit dates in a claim occur somewhere in its cited passages, accepting
-equivalent unambiguous date formats. A valid citation establishes
+explicit dates, identifiers, and stated currency amounts occur in cited original
+evidence or, for a comparison threshold, in the question. A valid citation establishes
 provenance, not factual correctness: a model can still misunderstand a passage or
 associate a short cell value with the wrong row. Such answers are labeled **AI answer
 with checked source references; facts not verified**. An invalid or unobserved
@@ -172,9 +186,13 @@ the index, up to 12,000 characters across the question. This makes source text
 available even when a model never calls `get_evidence`; it does not establish
 complete coverage of long documents. The audit records citation IDs and the size
 of this handoff, not its text. A model that reports insufficient evidence after
-retrieving sources
-gets at most one answer retry with indexed evidence; if it still reports absence,
-the answer remains unverified and the retrieved locations are shown for review.
+retrieving sources may receive a bounded correction with indexed evidence.
+The application also validates the final answer against a typed source ledger
+and may search locally or request one compact correction from the same provider.
+Provider and application corrections share a **maximum of two attempts**. If
+evidence remains insufficient, the answer stays unverified and original source
+excerpts are shown for review instead of presenting an unsupported "not found"
+statement as certain.
 If it uses the entire tool-round budget, one final
 generation request with tools disabled asks it to answer from the evidence already
 retrieved, or state that evidence is insufficient. For prose questions, a provider
@@ -197,6 +215,9 @@ JSON, but there is no second model request just to judge the answer. The legacy
 experiments; neither filters claims in the live provider path. For ambiguous
 requests such as "the contract" when multiple contracts are indexed, name the
 file. Cross-workbook BOQ sums remain separated by file and currency.
+
+The [recovery architecture note](docs/RECOVERY_ARCHITECTURE.md) explains the
+query plan, source ledger, correction budget, and factuality limits.
 
 A structured response now needs only a claim and retrieved citation:
 
