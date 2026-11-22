@@ -37,7 +37,7 @@ def main() -> int:
                             "--output", str(corpus)], check=True)
             conn = connect(Path(temp) / "hybrid.db")
             try:
-                indexed = ingest_folder(conn, str(corpus))
+                ingest_folder(conn, str(corpus))
                 ready = conn.execute(
                     "SELECT COUNT(*) FROM documents WHERE status='ready'").fetchone()[0]
                 if ready != 8:
