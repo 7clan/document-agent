@@ -16,7 +16,6 @@ import sys
 import time
 from datetime import UTC, datetime
 from pathlib import Path
-from urllib.error import URLError
 from urllib.request import urlopen
 
 from dotenv import load_dotenv
@@ -41,7 +40,7 @@ def _wait_for_server(port: int, process: subprocess.Popen, timeout: int = 90) ->
             with urlopen(f"http://127.0.0.1:{port}/_stcore/health", timeout=2) as reply:
                 if reply.status == 200:
                     return
-        except (OSError, URLError):
+        except OSError:
             time.sleep(1)
     raise RuntimeError("Timed out starting Streamlit")
 
