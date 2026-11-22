@@ -1,12 +1,6 @@
 name: Gemma citation recovery targeted regression
 
 on:
-  push:
-    branches:
-      - feature/bounded-self-recovery
-    paths:
-      - src/document_agent/agent.py
-      - .github/workflows/gemma-citation-regression.yml
   workflow_dispatch:
 
 permissions:
