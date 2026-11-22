@@ -104,7 +104,13 @@ def main() -> int:
             )
             for category, question, needs_model in QUESTIONS:
                 question_box.fill(question)
+                # Streamlit text_area keeps edits pending until Ctrl+Enter or blur.
+                # A click on a disabled Ask button does not commit pending edits.
+                question_box.press("Control+Enter")
                 ask_button = page.get_by_role("button", name="Ask agent")
+                from playwright.sync_api import expect
+
+                expect(ask_button).to_be_enabled(timeout=15000)
                 ask_button.click()
                 try:
                     page.get_by_text(re.compile(r"Answer status:")).first.wait_for(
