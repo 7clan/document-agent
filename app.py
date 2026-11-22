@@ -301,8 +301,21 @@ with st.sidebar:
     with st.expander("Index details and diagnostics", expanded=False):
         st.json(indexed, expanded=False)
 
+def _clear_answer_on_question_edit() -> None:
+    """Invalidate displayed evidence before another question can be shown."""
+    st.session_state.pop("last_answer", None)
+    st.session_state.pop("open_source", None)
+    st.session_state.pop("csv_export", None)
+    st.session_state.pop("_answer_for_question", None)
+
+
 question = st.text_area("Ask a question about the indexed documents",
-                        placeholder="List all total cost items above SAR 1 million across the BOQs")
+                        placeholder="List all total cost items above SAR 1 million across the BOQs",
+                        on_change=_clear_answer_on_question_edit)
+if ("last_answer" in st.session_state
+        and "_answer_for_question" in st.session_state
+        and st.session_state["_answer_for_question"] != question):
+    _clear_answer_on_question_edit()
 st.caption("Questions are independent: include the filename, threshold, or item selection "
            "instead of referring to 'those items' from an earlier answer.")
 if st.button("Ask agent", disabled=not question.strip() or not ready_to_ask or
@@ -320,6 +333,7 @@ if st.button("Ask agent", disabled=not question.strip() or not ready_to_ask or
             st.json(provider_error_diagnostic(exc))
         else:
             st.session_state["last_answer"] = answer
+            st.session_state["_answer_for_question"] = question
             st.session_state.pop("csv_export", None)
 
 if "last_answer" in st.session_state:
