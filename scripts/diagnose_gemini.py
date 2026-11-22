@@ -39,15 +39,17 @@ def main() -> int:
         return 2
     model = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
     client = genai.Client(api_key=key, http_options=types.HttpOptions(timeout=30000))
-    def check(name: str, fn) -> None:
+    def check(name: str, fn) -> bool:
         try:
             result = fn()
             print(f"{name}: OK " + str(result))
+            return True
         except Exception as exc:  # noqa: BLE001 - API compatibility diagnostic
             print(f"{name}: FAILED ({type(exc).__name__}) "
                   f"{provider_error_diagnostic(exc)}: {safe_exception(exc)}")
+            return False
 
-    check("plain_generate", lambda: "text"
+    plain_ok = check("plain_generate", lambda: "text"
           if client.models.generate_content(model=model, contents="Say OK").text else "empty")
 
     def tools_initial() -> str:
@@ -68,7 +70,8 @@ def main() -> int:
         )
         return ("calls=" + str(len(response.function_calls or [])) +
                 " text_present=" + str(bool(response.text)))
-    check("all_six_declared_tools_initial", tools_initial)
+    tools_ok = check("all_six_declared_tools_initial", tools_initial)
+    app_ok = False
 
     with tempfile.TemporaryDirectory(prefix="gemini_real_probe_") as temp:
         corpus = Path(temp) / "corpus"
@@ -83,6 +86,7 @@ def main() -> int:
         try:
             a = ask(db, "Which electrical cabinets must be brought into service?",
                     provider="gemini", model=model)
+            app_ok = True
             print("full_app_answer_status=" + a.verification_status)
             print("full_app_tool_call_count=" + str(len(a.tool_calls)))
             print("full_app_source_count=" + str(len(a.sources)))
@@ -92,7 +96,7 @@ def main() -> int:
                   " " + safe_exception(exc))
         finally:
             db.close()
-    return 0
+    return 0 if plain_ok and tools_ok and app_ok else 1
 
 
 if __name__ == "__main__":
