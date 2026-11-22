@@ -14,5 +14,4 @@ jobs:
       - run: pip install -e '.[dev]'
       - run: python -m pytest -q
       - run: python scripts/evaluate_retrieval.py --demo --mode keyword --k 3 > /dev/null
-      - run: ruff check --fix --diff scripts/record_live_interview.py || true
       - run: ruff check src tests app.py scripts
