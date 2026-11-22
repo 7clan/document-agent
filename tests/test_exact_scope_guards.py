@@ -2,6 +2,9 @@
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
+from pathlib import Path
 
 from document_agent.agent import ask
 from document_agent.db import connect
@@ -90,4 +93,48 @@ def test_damaged_attachment_does_not_inherit_approval_from_other_documents():
     assert answer.verification_status == "unverified"
     assert any(event["name"] == "host_unreadable_attachment"
                for event in answer.tool_calls)
+    conn.close()
+
+
+def test_frozen_release_documents_are_ingested_and_critical_items_resolve(tmp_path):
+    """Exercise actual generated PDF/Word/Excel ingestion, not invented tool results."""
+    project = Path(__file__).resolve().parents[1]
+    corpus = tmp_path / "release_corpus"
+    subprocess.run(
+        [sys.executable, str(project / "scripts" / "create_release_corpus.py"),
+         "--output", str(corpus)],
+        check=True,
+    )
+    from document_agent.ingest import ingest_folder
+
+    conn = connect(tmp_path / "release.db")
+    report = ingest_folder(conn, str(corpus))
+    assert not report.get("error")
+    ready = conn.execute("SELECT COUNT(*) FROM documents WHERE status='ready'").fetchone()[0]
+    failed = conn.execute("SELECT COUNT(*) FROM documents WHERE status!='ready'").fetchone()[0]
+    assert ready == 8
+    assert failed == 1
+
+    checks = (
+        ("Does HP-103 exceed SAR 1 million?", "No.", "Signed Base!F6"),
+        ("Does HP-1030 exceed SAR 1 million?", "Yes.", "Signed Base!F10"),
+    )
+    for question, verdict, cell in checks:
+        answer = ask(conn, question, provider="gemini")
+        assert answer.text.startswith(verdict)
+        assert len(answer.sources) == 1
+        assert cell in answer.sources[0]
+        assert answer.verification_status == "deterministically_verified"
+
+    missing = ask(conn, "What amount belongs to exact item HP-999?",
+                  provider="gemini")
+    assert "No exact item HP-999" in missing.text
+    assert "8400000" not in missing.text
+    assert not missing.sources
+
+    damaged = ask(conn, "Can the damaged attachment establish any new approval?",
+                  provider="gemini")
+    assert "09_Damaged_Attachment.pdf" in damaged.text
+    assert "does NOT establish" in damaged.text
+    assert not damaged.sources
     conn.close()
