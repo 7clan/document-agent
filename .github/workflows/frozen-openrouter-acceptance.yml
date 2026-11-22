@@ -1,4 +1,5 @@
 name: Frozen 44-question OpenRouter Gemma 4 acceptance
+# Post-citation-recovery rerun: preserve the original frozen question labels.
 
 on:
   push:
