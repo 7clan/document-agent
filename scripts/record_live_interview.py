@@ -20,7 +20,6 @@ from urllib.request import urlopen
 
 from dotenv import load_dotenv
 
-
 QUESTIONS = [
     ("semantic", "Which electrical cabinets must be brought into service?", True),
     ("exact_below", "Does HP-103 exceed SAR 1 million?", False),
