@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 from document_agent.agent import _indexed_inventory_answer
 from document_agent.db import connect
-from document_agent.guardrails import exact_register_milestone_answer
+from document_agent.guardrails import exact_item_answer, exact_register_milestone_answer
 from document_agent.structured_reporting import (
     contrasted_internal_and_contractual_dates,
 )
@@ -49,6 +49,20 @@ def test_three_way_schedule_request_not_handled_by_two_date_calculator():
                     "handover date and the later proposal, stating their statuses.")
         assert contrasted_internal_and_contractual_dates(
             conn, question, plan,
+        ) is None
+    finally:
+        conn.close()
+
+
+def test_signed_addendum_cost_not_misrouted_to_exact_boq_item():
+    conn = connect(":memory:")
+    try:
+        plan = SimpleNamespace(scope_kind="all_indexed", document_scope=[])
+        question = ("What extra physical work was approved by signed "
+                    "Addendum A-06 and what was its approved cost?")
+        assert exact_item_answer(conn, question, plan) is None
+        assert exact_item_answer(
+            conn, "What was the cost of signed Amendment A-06?", plan,
         ) is None
     finally:
         conn.close()
