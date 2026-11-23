@@ -7,6 +7,11 @@ on:
     paths:
       - scripts/evaluate_host_guards.py
       - src/document_agent/guardrails.py
+      - src/document_agent/optional_procurement.py
+      - src/document_agent/absence_guards.py
+      - src/document_agent/addition_evidence.py
+      - tests/test_optional_procurement.py
+      - tests/test_addition_evidence.py
       - src/document_agent/agent.py
       - .github/workflows/offline-guard-coverage.yml
   workflow_dispatch:
