@@ -1,4 +1,4 @@
-name: Unseen MQ-46 live Groq interview - pinned main vs PR9, both uncut videos
+name: Unseen MQ-46 live OpenRouter2 Gemma interview - pinned main vs PR9
 
 on:
   push:
@@ -24,9 +24,12 @@ jobs:
     timeout-minutes: 165
     env:
       GROQ_API_KEY: ${{ secrets.GROQ_API_KEY || secrets.GROQ_API || secrets.GROQ_KEY || secrets.GROQ }}
+      COMPATIBLE_API_KEY: ${{ secrets.OPENROUTER2 }}
+      COMPATIBLE_BASE_URL: https://openrouter.ai/api/v1
+      COMPATIBLE_MODEL: google/gemma-4-31b-it
       GROQ_BASE_URL: https://api.groq.com/openai/v1
       GROQ_MODEL: openai/gpt-oss-20b
-      LLM_PROVIDER: groq
+      LLM_PROVIDER: compatible
       DOCUMENT_AGENT_RETRIEVAL_MODE: hybrid
       DOCUMENT_AGENT_EMBEDDING_ALLOW_DOWNLOAD: '1'
       HF_HUB_DISABLE_TELEMETRY: '1'
@@ -61,7 +64,7 @@ jobs:
       - name: Verify harness syntax, original key and frozen question count
         shell: bash
         run: |
-          test -n "$GROQ_API_KEY"
+          test -n "$COMPATIBLE_API_KEY"
           python -m py_compile harness/scripts/create_unseen_coldchain_corpus.py \
             harness/scripts/record_unseen_interview.py \
             harness/scripts/score_unseen_interview.py
@@ -81,13 +84,13 @@ jobs:
           PYTHONPATH="$PWD/old_main/src" python harness/scripts/record_unseen_interview.py \
             --engine-root old_main --engine-ref main \
             --engine-sha b4bfc744583060b5854184d7628fbd354e694771 \
-            --corpus-root shared_unseen_mq46 --provider groq \
-            --model "$GROQ_MODEL" --output records/main --port 19051
+            --corpus-root shared_unseen_mq46 --provider compatible \
+            --model "$COMPATIBLE_MODEL" --output records/main --port 19051
           result=$?
           echo "ORIGINAL_RECORDER_EXIT=$result" >> "$GITHUB_ENV"
           echo "Original recording exit: $result"
           exit 0
-      - name: Cool down Groq token budget before independent candidate interview
+      - name: Cool down OpenRouter in-flight budget between interviews
         if: always()
         run: sleep 90
       - name: Film candidate PR9 Streamlit answering same fresh questions
@@ -98,8 +101,8 @@ jobs:
           PYTHONPATH="$PWD/candidate/src" python harness/scripts/record_unseen_interview.py \
             --engine-root candidate --engine-ref feature/claim-evidence-hardening \
             --engine-sha 360a8afdb77710da56d5b06f2ae204f018c4a8fc \
-            --corpus-root shared_unseen_mq46 --provider groq \
-            --model "$GROQ_MODEL" --output records/candidate --port 19052
+            --corpus-root shared_unseen_mq46 --provider compatible \
+            --model "$COMPATIBLE_MODEL" --output records/candidate --port 19052
           result=$?
           echo "CANDIDATE_RECORDER_EXIT=$result" >> "$GITHUB_ENV"
           echo "Candidate recording exit: $result"
@@ -120,7 +123,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: MQ46-UNSEEN-GROQ-ORIGINAL-VS-PR9-FULL-INTERVIEW
+          name: MQ46-UNSEEN-OPENROUTER2-GEMMA-ORIGINAL-VS-PR9-INTERVIEW
           path: |
             records/main/browser_results.json
             records/main/full_uncut_interview.webm
@@ -156,7 +159,7 @@ jobs:
           a,b=(json.loads(path.read_text()) for path in p)
           assert a['document_hashes']==b['document_hashes']
           assert a['ground_truth_sha256']==b['ground_truth_sha256']
-          assert a['model']==b['model']== 'openai/gpt-oss-20b'
-          assert a['provider']==b['provider']=='groq'
-          print('UNSEEN_PAIRED_INTERVIEW_COMPLETE 18+18 raw UI answers and both videos')
+          assert a['model']==b['model']== 'google/gemma-4-31b-it'
+          assert a['provider']==b['provider']=='compatible'
+          print('UNSEEN_PAIRED_INTERVIEW_COMPLETE 18+18 real OpenRouter2 Gemma UI answers and both videos')
           PY
