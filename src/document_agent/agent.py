@@ -28,6 +28,7 @@ from .query_plan import plan_question
 from .recovery import recover_answer
 from .retrieval_ids import requested_references
 from .semantic_verifier import verify_judgement
+from .structured_reporting import complete_milestone_schedule, verified_base_subtotal
 from .spreadsheet import _records as _boq_records
 from .tools import (
     DATE_REGEX,
@@ -717,7 +718,7 @@ def _financial_comparison_context(conn: sqlite3.Connection, question: str
         lines.append("No complete BOQ amount column was identified.")
         incomplete = True
     passages: list[str] = []
-    for terms in ("original contract value", "contract sum"):
+    for terms in ("original contract value", "original contract price", "contract sum"):
         for hit in search_documents(conn, terms, limit=8).get("results", []):
             cite = hit["citation"]
             if cite in citations or cite in [item.split(": ", 1)[0] for item in passages]:
@@ -801,9 +802,9 @@ def _checked_financial_comparison(conn: sqlite3.Connection, question: str,
     contract_matches: dict[str, Decimal] = {}
     original_value = re.compile(
         r"(?i)\b(?:original|base|signed)\b[^.!?\n]{0,100}?\bcontract\s+"
-        r"(?:sum|value|amount)\b[^.!?\n]{0,60}?\b(SAR|AED|USD|EUR|GBP)\s*"
+        r"(?:sum|value|amount|price)\b[^.!?\n]{0,60}?\b(SAR|AED|USD|EUR|GBP)\s*"
         r"([\d,]+(?:\.\d+)?)")
-    for terms in ("original contract value", "contract sum"):
+    for terms in ("original contract value", "original contract price", "contract sum"):
         for hit in search_documents(conn, terms, limit=12).get("results", []):
             cite = hit["citation"]
             evidence = get_evidence(conn, cite)
@@ -2823,6 +2824,15 @@ def ask(conn: sqlite3.Connection, question: str, max_rounds: int = 8,
         guarded = exact_item_answer(conn, question, plan)
     if guarded is None:
         guarded = _host_explicit_sheet_financial_filter(conn, question, plan)
+    if guarded is None:
+        guarded = verified_base_subtotal(conn, question, plan)
+    if guarded is None:
+        guarded = complete_milestone_schedule(conn, question, plan)
+    if (guarded is None and plan.scope_kind != "mixed"
+            and _cross_document_amount_question(question)
+            and re.search(r"(?i)\b(?:equal|same)\b", question)
+            and re.search(r"(?i)\boriginal\b", question)):
+        guarded = _checked_financial_comparison(conn, question, [])
     if guarded is not None:
         guarded.tool_calls.insert(0, plan.audit())
         return guarded
