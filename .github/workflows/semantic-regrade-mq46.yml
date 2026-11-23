@@ -1,0 +1,54 @@
+name: Regrade frozen MQ-46 interview with independent semantic judge
+
+on:
+  push:
+    branches: [feature/semantic-verifier-false-negatives]
+    paths: [.github/workflows/semantic-regrade-mq46.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  regrade-existing-recordings:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      GH_TOKEN: ${{ github.token }}
+      OPENROUTER2: ${{ secrets.OPENROUTER2 }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install review dependencies
+        run: pip install 'openai>=1.0,<3'
+      - name: Download both untouched completed Gemini interview recordings
+        run: |
+          gh run download 45175478411 \
+            --repo 7clan/document-agent \
+            --name MQ46-UNSEEN-GEMINI35LITE-ORIGINAL-VS-PR9-INTERVIEW \
+            --dir original-recordings
+          test -s original-recordings/main/browser_results.json
+          test -s original-recordings/candidate/browser_results.json
+      - name: Semantic regrade of all captured answers, with source integrity separate
+        run: |
+          test -n "$OPENROUTER2"
+          python scripts/semantic_review_unseen.py \
+            --baseline original-recordings/main/browser_results.json \
+            --candidate original-recordings/candidate/browser_results.json \
+            --rubric evaluation/unseen_coldchain_interview.json \
+            --output semantic-review-results \
+            --judge-provider openrouter \
+            --judge-model google/gemma-4-31b-it
+      - name: Preserve independent verdicts and raw original scores
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: semantic-reviewed-MQ46-main-vs-PR9
+          path: |
+            semantic-review-results/
+            original-recordings/comparison/RESULTS.md
+            original-recordings/comparison/unseen_paired_answers.csv
+          retention-days: 30
