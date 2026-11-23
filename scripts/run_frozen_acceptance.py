@@ -17,7 +17,7 @@ import time
 from datetime import UTC, datetime
 from pathlib import Path
 
-from document_agent.agent import ask, provider_error_diagnostic
+from document_agent.agent import _retry_after_seconds, ask, provider_error_diagnostic
 from document_agent.db import connect
 from document_agent.ingest import ingest_folder
 from document_agent.tools import get_evidence
@@ -94,6 +94,68 @@ def summarize_cases(rows: list[dict]) -> dict:
     }
 
 
+def resume_cases(report: dict, previous: dict, cases: list[dict]) -> int:
+    """Resume only completed, unchanged questions from a matching provider run.
+
+    A final 402/429 error is retried, never silently counted as completed.
+    Refuse any change to the frozen question labels, model or retrieval mode.
+    """
+    for field in ("provider", "model", "ground_truth_sha256",
+                  "retrieval_mode_requested", "case_count"):
+        if previous.get(field) != report.get(field):
+            raise ValueError(f"Refusing incompatible checkpoint: {field}")
+    saved = previous.get("cases")
+    if not isinstance(saved, list) or len(saved) > len(cases):
+        raise ValueError("Checkpoint cases invalid or exceed frozen question count")
+    accepted = []
+    for i, entry in enumerate(saved):
+        case = cases[i]
+        if (not isinstance(entry, dict) or entry.get("id") != case["id"]
+                or entry.get("question") != case["question"]
+                or entry.get("expected_answer") != case["expected_answer"]
+                or entry.get("expected_citations") != case["expected_citations"]
+                or entry.get("critical") != case["critical"]):
+            raise ValueError(f"Checkpoint ground truth mismatch at case {case['id']}")
+        error = entry.get("provider_error")
+        if error:
+            if (i != len(saved) - 1
+                    or error.get("http_status") not in (402, 429)):
+                raise ValueError("Only a trailing 402/429 interruption is resumable")
+            break
+        if "actual_answer" not in entry or "verification_status" not in entry:
+            raise ValueError("Checkpoint contains an incomplete answer")
+        accepted.append(entry)
+    report["cases"] = accepted
+    report["resume"] = {
+        "previously_answered": len(accepted),
+        "resumed_from_question": (cases[len(accepted)]["id"]
+                                  if len(accepted) < len(cases) else None),
+        "checkpoint_compatibility_verified": True,
+    }
+    return len(accepted)
+
+
+def retry_temporary_budget(conn, question: str, provider: str) -> tuple[object, int]:
+    """Retry only OpenRouter in-flight budget 402; not exhausted credits."""
+    for attempt in range(4):
+        try:
+            return ask(conn, question, provider=provider), attempt
+        except Exception as exc:  # noqa: BLE001 - inspect sanitized provider code
+            safe = provider_error_diagnostic(exc)
+            if (safe.get("http_status") != 402
+                    or safe.get("limit_source") != "openrouter_in_flight_budget"
+                    or attempt >= 3):
+                raise
+            suggested = _retry_after_seconds(exc)
+            if suggested is None:
+                suggested = (12.0, 25.0, 45.0)[attempt]
+            delay = min(90.0, max(5.0, float(suggested)))
+            print(f"Temporary OpenRouter in-flight budget (HTTP 402): "
+                  f"retry {attempt + 1}/3 after {delay:.0f}s", flush=True)
+            time.sleep(delay)
+    raise AssertionError("Unreachable transient-provider retry path")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, required=True)
@@ -101,6 +163,7 @@ def main() -> int:
     parser.add_argument("--mode", choices=("keyword", "hybrid"), default="keyword")
     parser.add_argument("--delay", type=float, default=1.5)
     parser.add_argument("--ids", default="", help="Optional comma-separated IDs for diagnosis")
+    parser.add_argument("--resume", action="store_true", help="Continue a verified JSON checkpoint")
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
     os.environ["DOCUMENT_AGENT_RETRIEVAL_MODE"] = args.mode
@@ -165,8 +228,22 @@ def main() -> int:
             output.write_text(json.dumps(report, indent=2, ensure_ascii=False),
                               encoding="utf-8")
 
+        offset = 0
+        if args.resume:
+            if not output.is_file():
+                parser.error("--resume requested but previous acceptance_results.json is missing")
+            previous = json.loads(output.read_text(encoding="utf-8"))
+            offset = resume_cases(report, previous, cases)
+            # Verify the original indexed citations can still be resolved.
+            for previous_case in report["cases"]:
+                if any("error" in get_evidence(conn, citation)
+                       for citation in previous_case.get("actual_citations", [])):
+                    raise ValueError("A preserved citation no longer resolves in the corpus")
+            print(f"RESUMED {offset} previously completed questions "
+                  f"from an exact matching frozen corpus", flush=True)
+            save()
         rate_limited_in_a_row = 0
-        for i, case in enumerate(cases, 1):
+        for i, case in enumerate(cases[offset:], offset + 1):
             started = time.monotonic()
             entry = {
                 "id": case["id"], "critical": case["critical"],
@@ -175,7 +252,9 @@ def main() -> int:
                 "expected_citations": case["expected_citations"],
             }
             try:
-                answer = ask(conn, case["question"], provider=args.provider)
+                answer, transient_retries = retry_temporary_budget(
+                    conn, case["question"], args.provider)
+                entry["temporary_budget_retries"] = transient_retries
                 actual = list(dict.fromkeys(answer.sources))
                 entry.update({
                     "actual_answer": _clean(answer.text),
