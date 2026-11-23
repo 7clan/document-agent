@@ -1,0 +1,83 @@
+name: OpenRouter alternate-model smoke (Nemotron)
+
+on:
+  push:
+    branches: [experiment/openrouter-nemotron-smoke]
+    paths:
+      - .github/workflows/openrouter-nemotron-smoke.yml
+
+permissions:
+  contents: read
+
+jobs:
+  alternate-model-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      COMPATIBLE_API_KEY: ${{ secrets.OPENROUTER_API_KEY || secrets.OPEN_ROUTER_API_KEY || secrets.OPENROUTER_KEY || secrets.OPENROUTER }}
+      COMPATIBLE_BASE_URL: https://openrouter.ai/api/v1
+      COMPATIBLE_MODEL: nvidia/nemotron-3.5-lightning
+      DOCUMENT_AGENT_EMBEDDING_ALLOW_DOWNLOAD: '1'
+      HF_HUB_DISABLE_TELEMETRY: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: evaluation
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: minilm-l6-v2-huggingface-v1
+      - name: Install real document agent and local embedding dependencies
+        run: pip install -e './evaluation[dev,openai,embeddings]'
+      - name: Create unchanged held-out PDF, Word, and Excel corpus
+        run: python evaluation/scripts/evaluate_unseen_semantics.py --generate-corpus unseen-shared
+      - name: One real OpenRouter Nemotron semantic answer with original citations
+        shell: bash
+        run: |
+          if [ -z "$COMPATIBLE_API_KEY" ]; then
+            echo 'OPENROUTER_SMOKE ERROR: no repository secret resolves for COMPATIBLE_API_KEY'
+            exit 1
+          fi
+          python - <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          sys.path.insert(0, str(Path.cwd() / "evaluation" / "scripts"))
+          import evaluate_unseen_semantics as benchmark
+
+          # Limit requests and cost: one genuine model-backed semantic question.
+          benchmark.QA[:] = benchmark.QA[:1]
+          report = benchmark.run(
+              Path("evaluation").resolve(),
+              Path("smoke-results/nemotron-live.json"),
+              "compatible",
+              "hybrid",
+              Path("unseen-shared").resolve(),
+          )
+          result = report["qa"][0] if report["qa"] else {}
+          print("OPENROUTER_SMOKE", json.dumps({
+              "model": "nvidia/nemotron-3.5-lightning",
+              "api_endpoint": "https://openrouter.ai/api/v1",
+              "question": result.get("question"),
+              "answer": result.get("answer"),
+              "citations": result.get("citations"),
+              "verification_status": result.get("verification_status"),
+              "source_coverage": result.get("source_coverage"),
+              "semantic_anchor_match": result.get("semantic_anchor_match"),
+              "model_tool_calls": result.get("model_tool_calls"),
+              "latency_seconds": result.get("latency_seconds"),
+              "provider_error": result.get("provider_error"),
+          }), flush=True)
+          if report["summary"]["qa_answered"] != 1:
+              sys.exit("OPENROUTER_SMOKE FAILED: model did not complete the answer")
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: openrouter-nemotron-smoke-original-answer
+          path: smoke-results/
+          retention-days: 14
