@@ -1606,9 +1606,15 @@ def _indexed_inventory_answer(conn: sqlite3.Connection, question: str,
     """Answer a file-format inventory from index records after a real tool call."""
     if not any(call.get("name") == "list_documents" and call.get("ok") for call in trace):
         return None
-    if not (re.search(r"(?i)\b(?:files?|documents?)\b", question)
-            and re.search(r"(?i)\b(?:list|which|what|how many|count|formats?|indexed)\b",
-                          question)):
+    # "What document is required?" asks about an obligation, not a file list.
+    file_request = bool(re.search(r"(?i)\b(?:files?|documents?)\b", question))
+    indexed_context = bool(re.search(
+        r"(?i)\b(?:indexed|uploaded|available|readable|formats?|inventory|"
+        r"file types?|folder|directories)\b", question))
+    explicit_list = bool(re.search(
+        r"(?i)^\s*(?:list|show|count|how many)\b.{0,100}\b(?:files?|documents?)\b",
+        question))
+    if not (file_request and (indexed_context or explicit_list)):
         return None
     # A mixed request still needs the model's passage-level answer.
     if re.search(r"(?i)\b(?:summarize|scope|extract|calculate|compare|cost|dates?|"
