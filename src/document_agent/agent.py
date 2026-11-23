@@ -18,9 +18,9 @@ from dotenv import load_dotenv
 
 from .claim_verifier import _explicit_files, parse_answer, question_parts, validate_claims
 from .guardrails import (
+    document_instruction_safety_answer,
     exact_item_answer,
     exact_register_milestone_answer,
-    document_instruction_safety_answer,
     two_item_comparison_answer,
     unreadable_attachment_answer,
 )
