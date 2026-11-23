@@ -1,0 +1,186 @@
+name: Real 18-question MQ-46 comparison - original MAIN vs PR10 pinned
+
+on:
+  push:
+    branches: [feature/semantic-verifier-false-negatives]
+    paths:
+      - .github/workflows/main-vs-pr10-mq46.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: frozen-mq46-main-vs-pr10-20261123
+  cancel-in-progress: false
+
+jobs:
+  main-vs-pr10:
+    runs-on: ubuntu-latest
+    timeout-minutes: 160
+    env:
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY_2 }}
+      GEMINI_MODEL: gemini-3.5-flash-lite
+      LLM_PROVIDER: gemini
+      DOCUMENT_AGENT_RETRIEVAL_MODE: hybrid
+      DOCUMENT_AGENT_EMBEDDING_ALLOW_DOWNLOAD: '1'
+      DOCUMENT_AGENT_SEMANTIC_VERIFY: '0'
+      HF_HUB_DISABLE_TELEMETRY: '1'
+      OPENROUTER2: ${{ secrets.OPENROUTER2 }}
+    steps:
+      - name: Checkout unmodified MAIN exactly as prior baseline
+        uses: actions/checkout@v4
+        with:
+          ref: b4bfc744583060b5854184d7628fbd354e694771
+          path: old_main
+      - name: Checkout PR10 code before this workflow was added, pinned
+        uses: actions/checkout@v4
+        with:
+          ref: a3caffa883a6d887d2f722125a136e35c661c708
+          path: candidate
+      - name: Checkout frozen original MQ46 corpus and browser benchmark harness
+        uses: actions/checkout@v4
+        with:
+          ref: 7c5f6dff98e0d76d1b5a09813e6c8e822684148c
+          path: harness
+      - name: Checkout PR10 semantic scorer separately from measured model versions
+        uses: actions/checkout@v4
+        with:
+          path: scoring
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: minilm-l6-v2-huggingface-v1
+      - name: Install real UI, PDF, XLSX, DOCX, and embedding dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e './harness[dev,openai,embeddings]'
+          pip install playwright
+          python -m playwright install --with-deps chromium
+      - name: Verify immutable source versions and rubric
+        run: |
+          test -n "$GEMINI_API_KEY"
+          python - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+          frozen=Path('harness/evaluation/unseen_coldchain_interview.json').read_bytes()
+          scoring=Path('scoring/evaluation/unseen_coldchain_interview.json').read_bytes()
+          assert frozen==scoring, 'The PR10 semantic rubric differs from the original frozen questions'
+          questions=json.loads(frozen)['questions']
+          assert len(questions)==18 and len({q['id'] for q in questions})==18
+          print('FROZEN_18_QUESTIONS',hashlib.sha256(frozen).hexdigest(),flush=True)
+          print('MAIN_SHA b4bfc744583060b5854184d7628fbd354e694771',flush=True)
+          print('PR10_SHA a3caffa883a6d887d2f722125a136e35c661c708',flush=True)
+          PY
+      - name: Generate single identical nine-file MQ46 corpus
+        run: python harness/scripts/create_unseen_coldchain_corpus.py --output shared_mq46
+      - name: Film all 18 questions in actual original main Streamlit app
+        shell: bash
+        run: |
+          set +e
+          PYTHONPATH="$PWD/old_main/src" python harness/scripts/record_unseen_interview.py \
+            --engine-root old_main --engine-ref main \
+            --engine-sha b4bfc744583060b5854184d7628fbd354e694771 \
+            --corpus-root shared_mq46 --provider gemini \
+            --model "$GEMINI_MODEL" --output records/main --port 19051
+          result=$?
+          echo "MAIN_RECORDER_EXIT=$result" >> "$GITHUB_ENV"
+          exit 0
+      - name: Cooldown for fair provider rate and in-flight quota
+        run: sleep 90
+      - name: Film all 18 questions in actual pinned PR10 Streamlit app
+        shell: bash
+        run: |
+          set +e
+          PYTHONPATH="$PWD/candidate/src" python harness/scripts/record_unseen_interview.py \
+            --engine-root candidate --engine-ref feature/semantic-verifier-false-negatives \
+            --engine-sha a3caffa883a6d887d2f722125a136e35c661c708 \
+            --corpus-root shared_mq46 --provider gemini \
+            --model "$GEMINI_MODEL" --output records/candidate --port 19052
+          result=$?
+          echo "PR10_RECORDER_EXIT=$result" >> "$GITHUB_ENV"
+          exit 0
+      - name: Preserve legacy regex score for audit only
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          python harness/scripts/score_unseen_interview.py \
+            --baseline records/main/browser_results.json \
+            --candidate records/candidate/browser_results.json \
+            --output records/comparison
+          echo "LEGACY_SCORER_EXIT=$?" >> "$GITHUB_ENV"
+          exit 0
+      - name: Independently regrade both frozen recordings with question-aware Gemma
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          if [ -n "$OPENROUTER2" ] && \
+             [ -s records/main/browser_results.json ] && \
+             [ -s records/candidate/browser_results.json ]; then
+            python scoring/scripts/semantic_review_unseen.py \
+              --baseline records/main/browser_results.json \
+              --candidate records/candidate/browser_results.json \
+              --rubric scoring/evaluation/unseen_coldchain_interview.json \
+              --output records/semantic_comparison \
+              --judge-provider openrouter \
+              --judge-model google/gemma-4-31b-it
+            echo "SEMANTIC_SCORER_EXIT=$?" >> "$GITHUB_ENV"
+          else
+            echo "SEMANTIC_REVIEW_SKIPPED_KEY_OR_REPORT_UNAVAILABLE"
+          fi
+          exit 0
+      - name: Always upload both videos, 36 original answers, regex and semantic grading
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pinned-MQ46-MAIN-vs-PR10-real-browser-interviews
+          path: |
+            records/main/browser_results.json
+            records/main/full_uncut_interview.webm
+            records/main/full_uncut_interview.mp4
+            records/main/stills/*.png
+            records/candidate/browser_results.json
+            records/candidate/full_uncut_interview.webm
+            records/candidate/full_uncut_interview.mp4
+            records/candidate/stills/*.png
+            records/comparison/
+            records/semantic_comparison/
+          retention-days: 30
+          if-no-files-found: warn
+          compression-level: 0
+      - name: Strict paired conclusion gate - never call partial interview a winner
+        if: always()
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          paths=[Path('records/main/browser_results.json'),
+                 Path('records/candidate/browser_results.json')]
+          for p in paths:
+              if not p.is_file():
+                  raise SystemExit('MISSING_VIDEO_RECORDING '+str(p))
+          old,new=(json.loads(p.read_text()) for p in paths)
+          for report in (old,new):
+              print('LIVE_PAIR',report['engine_ref'],report['summary'],flush=True)
+              if (not report.get('recording_verified')
+                  or report['summary']['completed_with_answer'] != 18):
+                  raise SystemExit('INCOMPLETE_18_ANSWERS '+report['engine_ref'])
+          assert old['document_hashes']==new['document_hashes']
+          assert old['ground_truth_sha256']==new['ground_truth_sha256']
+          assert old['model']==new['model']=='gemini-3.5-flash-lite'
+          assert old['provider']==new['provider']=='gemini'
+          sem=Path('records/semantic_comparison/semantic_review.json')
+          if not sem.exists():
+              raise SystemExit('SEMANTIC_REVIEW_MISSING')
+          graded=json.loads(sem.read_text())
+          for side in ('main','candidate'):
+              if graded['results'][side]['summary']['judged'] != 18:
+                  raise SystemExit('SEMANTIC_JUDGMENTS_INCOMPLETE_'+side)
+          print('FULL_18_PLUS_18_BROWSER_AND_36_SEMANTIC_JUDGMENTS_COMPLETE')
+          PY
