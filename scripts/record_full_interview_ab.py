@@ -259,14 +259,14 @@ def main() -> int:
                             "heading", name="Source references")
                         if heading.count():
                             heading.first.scroll_into_view_if_needed(timeout=8000)
-                    except Exception:
-                        pass
+                    except Exception as exc:  # noqa: BLE001 - UI scrolling is optional
+                        row["source_scroll_warning"] = type(exc).__name__
                     page.wait_for_timeout(700)
                     if case["id"] in (1, 6, 19, 24, 29, 36, 41, 44):
                         page.screenshot(
                             path=str(out / "stills" / f"case-{case['id']:02d}.png"),
                             full_page=False)
-                except Exception as exc:
+                except Exception as exc:  # noqa: BLE001 - persist browser failures
                     row["error"] = {"type": type(exc).__name__,
                                     "message": str(exc).splitlines()[0][:240]}
                     row["displayed_answer"] = ""
@@ -332,7 +332,7 @@ def main() -> int:
                     expected for expected in row["expected_citations"]
                     if any(citation_matches(expected, actual) for actual in sources)]
             db.close()
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - preserve audit failures
             report["evidence_validation_error"] = type(exc).__name__
         report["recording_verified"] = bool(
             len(report["cases"]) == len(questions)
