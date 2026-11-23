@@ -29,7 +29,11 @@ from .recovery import recover_answer
 from .retrieval_ids import requested_references
 from .semantic_verifier import verify_judgement
 from .spreadsheet import _records as _boq_records
-from .structured_reporting import complete_milestone_schedule, verified_base_subtotal
+from .structured_reporting import (
+    complete_milestone_schedule,
+    original_contract_subtotal_comparison,
+    verified_base_subtotal,
+)
 from .tools import (
     DATE_REGEX,
     TOOL_SCHEMAS,
@@ -2828,6 +2832,8 @@ def ask(conn: sqlite3.Connection, question: str, max_rounds: int = 8,
         guarded = verified_base_subtotal(conn, question, plan)
     if guarded is None:
         guarded = complete_milestone_schedule(conn, question, plan)
+    if guarded is None:
+        guarded = original_contract_subtotal_comparison(conn, question, plan)
     if (guarded is None and plan.scope_kind != "mixed"
             and _cross_document_amount_question(question)
             and re.search(r"(?i)\b(?:equal|same)\b", question)
