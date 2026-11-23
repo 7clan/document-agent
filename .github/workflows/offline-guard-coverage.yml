@@ -1,0 +1,39 @@
+name: Offline 44-case deterministic guard coverage
+
+on:
+  push:
+    branches:
+      - feature/bounded-self-recovery
+    paths:
+      - scripts/evaluate_host_guards.py
+      - src/document_agent/guardrails.py
+      - src/document_agent/agent.py
+      - .github/workflows/offline-guard-coverage.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  offline-guard-coverage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install actual production application (no provider keys)
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e '.[dev]'
+      - name: Test all 44 frozen cases with all provider calls blocked
+        run: python scripts/evaluate_host_guards.py
+      - name: Preserve actual offline answers and source checks
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frozen-44-offline-host-guard-coverage
+          path: .local/host_coverage/host_coverage.json
+          if-no-files-found: warn
+          retention-days: 14
