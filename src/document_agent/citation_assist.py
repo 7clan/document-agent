@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import re
 import sqlite3
-from collections import Counter
 from collections.abc import Iterable
 from typing import Any
 
@@ -21,7 +20,7 @@ _STOP = frozenset({
     "about", "according", "based", "using", "does", "did", "doesn",
     "each", "every", "both", "their", "there", "then", "than", "only",
     "must", "please", "state", "give", "list", "identify", "specify",
-    "tell", "show", "compare", "calculate", "exact", "which", "three",
+    "tell", "show", "compare", "calculate", "exact", "three",
 })
 _NEGATION = re.compile(
     r"\b(?:not|never|no|excluded|excluding|unsigned|unauthorized|unapproved"
@@ -85,8 +84,8 @@ def _literal_support(claim: str, source: str) -> bool:
     if len(meaningful & _content_terms(source)) < 3:
         return False
     # Requiring five consecutive words makes unrelated shared nouns insufficient.
-    tokens = set(tuple(source_words[i:i + 5]) for i in
-                 range(len(source_words) - 4))
+    tokens = {tuple(source_words[i:i + 5]) for i in
+              range(len(source_words) - 4)}
     return any(tuple(claim_words[i:i + 5]) in tokens for i in
                range(len(claim_words) - 4))
 
