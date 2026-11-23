@@ -189,7 +189,7 @@ def test_frozen_release_documents_are_ingested_and_critical_items_resolve(tmp_pa
     assert any("01_Signed_Pumping_Contract.pdf | page 2 | chunk 0" == source
                for source in comparison.sources)
     assert "Signed Base!F4" in " ".join(comparison.sources)
-    assert comparison.verification_status == "evidence_linked"
+    assert comparison.verification_status == "deterministically_verified"
 
     full_schedule = ask(
         conn, "Separate every contractual schedule date from planning and proposal dates.",
