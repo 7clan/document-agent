@@ -106,9 +106,13 @@ JS_READ_RESULT = r"""() => {
     /[.]pdf \| |[.]docx \| |[.]xlsx? \| |[.]xlsm \| /i.test(c)
   ))];
   const toolCalls = body.match(/Model document-tool calls:\s*(\d+)/);
+  const limitSource = body.match(/"limit_source"\s*:\s*"([^"]+)"/);
+  const httpStatus = body.match(/"http_status"\s*:\s*(\d+)/);
   return {answer_text: answerText, citations,
           model_tool_calls: toolCalls ? Number(toolCalls[1]) : null,
           provider_diagnostic: body.includes("Provider diagnostic (status, code, request phase only)"),
+          provider_limit_source: limitSource ? limitSource[1] : null,
+          provider_http_status: httpStatus ? Number(httpStatus[1]) : null,
           status_present: body.includes("Answer status:"),
           render_marker: body.includes("Answered question:")};
 }"""
@@ -247,6 +251,45 @@ def main() -> int:
                         )
                     page.wait_for_timeout(500)
                     observation = page.evaluate(JS_READ_RESULT)
+                    retries = 0
+                    while (args.provider == "compatible"
+                           and observation["provider_diagnostic"]
+                           and observation["provider_limit_source"]
+                           == "openrouter_in_flight_budget"
+                           and retries < 3):
+                        # OpenRouter explicitly identifies this as a transient
+                        # in-flight spending limit, not an exhausted balance.
+                        # The UI does not expose Retry-After; bounded backoff.
+                        delay_seconds = (30, 60, 120)[retries]
+                        print("TEMPORARY_IN_FLIGHT_BUDGET", args.engine_ref,
+                              case["id"], "retry", retries + 1,
+                              "after_s", delay_seconds, flush=True)
+                        page.wait_for_timeout(delay_seconds * 1000)
+                        question_box.fill(question)
+                        question_box.press("Control+Enter")
+                        page.get_by_role("button", name="Ask agent").click(timeout=20000)
+                        page.wait_for_timeout(1100)
+                        if args.engine_ref != "main":
+                            page.wait_for_function(
+                                """q => document.body.innerText.includes("Answered question: " + q)
+                                || document.body.innerText.includes("Failed question: " + q)""",
+                                arg=question, timeout=135000,
+                            )
+                        else:
+                            page.wait_for_function(
+                                """previous => {
+                                   let t = document.body.innerText || "";
+                                   if (t.includes("Provider diagnostic (status, code, request phase only)"))
+                                     return true;
+                                   let m = t.match(/Answer status:\\s*([\\s\\S]*?)Source references/);
+                                   return m && m[1].trim() && m[1].trim() !== previous;
+                                }""",
+                                arg=previous_answer, timeout=135000,
+                            )
+                        page.wait_for_timeout(450)
+                        observation = page.evaluate(JS_READ_RESULT)
+                        retries += 1
+                    row["temporary_budget_retries"] = retries
                     row.update({
                         "response_captured": bool(observation["status_present"]
                                                    and observation["answer_text"]
@@ -255,6 +298,8 @@ def main() -> int:
                         "citations": observation["citations"],
                         "model_tool_calls_shown": observation["model_tool_calls"],
                         "provider_diagnostic": observation["provider_diagnostic"],
+                        "provider_http_status": observation["provider_http_status"],
+                        "provider_limit_source": observation["provider_limit_source"],
                     })
                     if row["response_captured"]:
                         previous_answer = observation["answer_text"]
@@ -288,7 +333,7 @@ def main() -> int:
                         "Provider diagnostic encountered; further paid calls "
                         "were not attempted. See captured video.")
                     break
-                page.wait_for_timeout(500)
+                page.wait_for_timeout(3000 if args.provider == "compatible" else 500)
             video = page.video
             context.close()
             video_file = Path(video.path()) if video else None
