@@ -73,7 +73,7 @@ def main() -> int:
             finally:
                 module._ask_gemini = original
                 conn.close()
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - preserve offline audit failure type
         result["failure_type"] = type(exc).__name__
     result["summary"] = {
         "total": len(result["results"]),
