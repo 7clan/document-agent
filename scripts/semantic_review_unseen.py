@@ -12,7 +12,8 @@ import hashlib
 import json
 import os
 from pathlib import Path
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 LABELS = {"correct", "partial", "incorrect", "unreviewed"}
 SYSTEM = """You are a conservative independent examiner of an AI document answer.
@@ -109,7 +110,7 @@ def grade_report(rubric: dict, report: dict,
         if obs.get("response_captured") is True and actual:
             try:
                 verdict = judge(item, actual)
-            except Exception as exc:  # A judge failure must never be scored wrong.
+            except Exception as exc:  # noqa: BLE001 - external judge failures are inconclusive
                 verdict = {"label": "unreviewed",
                            "reason": "Judge unavailable: " + type(exc).__name__}
         rows.append(grade_case(item, obs, verdict))
