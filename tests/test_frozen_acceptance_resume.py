@@ -86,9 +86,12 @@ def test_transient_openrouter_in_flight_402_retries_without_spending_more_on_per
         status_code = 402
         body = {"error": {"metadata": {"limit_source":
                                       "openrouter_in_flight_budget"}}}
-    monkeypatch.setitem(namespace, "ask", lambda *_args, **_kwargs: (
-        attempts.append("called") or
-        (_ for _ in ()).throw(Transient()) if len(attempts) == 1 else "answer"))
+    def transient_once(*_args, **_kwargs):
+        attempts.append("called")
+        if len(attempts) == 1:
+            raise Transient
+        return "answer"
+    monkeypatch.setitem(namespace, "ask", transient_once)
     monkeypatch.setitem(namespace, "_retry_after_seconds", lambda _exc: 5.0)
     monkeypatch.setattr(namespace["time"], "sleep", lambda _seconds: None)
     assert fn(None, "test", "compatible") == ("answer", 1)
