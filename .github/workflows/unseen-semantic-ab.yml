@@ -15,7 +15,7 @@ permissions:
 
 concurrency:
   group: unseen-semantic-ab
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   offline-ab:
@@ -44,6 +44,7 @@ jobs:
           path: ~/.cache/huggingface
           key: minilm-l6-v2-huggingface-v1
       - run: pip install -e './candidate[dev,openai,embeddings]'
+      - run: python evaluation/scripts/evaluate_unseen_semantics.py --generate-corpus unseen-shared
       - name: Compare identical generated documents
         run: |
           mkdir -p unseen-results
@@ -51,6 +52,7 @@ jobs:
             for mode in keyword hybrid; do
               python evaluation/scripts/evaluate_unseen_semantics.py \
                 --engine-root "$commit" --mode "$mode" --provider none \
+                --corpus-root unseen-shared \
                 --output "unseen-results/${commit}_${mode}_offline.json"
             done
           done
@@ -104,6 +106,7 @@ jobs:
           path: ~/.cache/huggingface
           key: minilm-l6-v2-huggingface-v1
       - run: pip install -e './candidate[dev,openai,embeddings]'
+      - run: python evaluation/scripts/evaluate_unseen_semantics.py --generate-corpus unseen-shared
       - name: Same questions through real Gemini and Gemma APIs
         run: |
           mkdir -p unseen-results
@@ -117,6 +120,7 @@ jobs:
             for commit in baseline candidate; do
               python evaluation/scripts/evaluate_unseen_semantics.py \
                 --engine-root "$commit" --mode hybrid --provider "$provider" \
+                --corpus-root unseen-shared \
                 --output "unseen-results/${commit}_${provider}_live.json"
             done
           done
