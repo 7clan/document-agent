@@ -252,18 +252,27 @@ def main() -> int:
                     page.wait_for_timeout(500)
                     observation = page.evaluate(JS_READ_RESULT)
                     retries = 0
-                    while (args.provider == "compatible"
-                           and observation["provider_diagnostic"]
-                           and observation["provider_limit_source"]
-                           == "openrouter_in_flight_budget"
-                           and retries < 3):
-                        # OpenRouter explicitly identifies this as a transient
-                        # in-flight spending limit, not an exhausted balance.
-                        # The UI does not expose Retry-After; bounded backoff.
-                        delay_seconds = (30, 60, 120)[retries]
-                        print("TEMPORARY_IN_FLIGHT_BUDGET", args.engine_ref,
-                              case["id"], "retry", retries + 1,
-                              "after_s", delay_seconds, flush=True)
+                    while (observation["provider_diagnostic"] and retries < 3
+                           and (observation["provider_http_status"] == 429
+                                or (args.provider == "compatible"
+                                    and observation["provider_limit_source"]
+                                    == "openrouter_in_flight_budget"))):
+                        if observation["provider_http_status"] == 429:
+                            body = page.locator("body").inner_text()
+                            match = re.search(
+                                r"(?i)retry in approximately (\\d+) seconds", body)
+                            observed_delay = int(match.group(1)) if match else 65
+                            delay_seconds = min(150, max(20, observed_delay + 12))
+                            print("MODEL_RATE_LIMIT_429", args.engine_ref,
+                                  case["id"], "retry", retries + 1,
+                                  "after_s", delay_seconds, flush=True)
+                        else:
+                            # Only retry provider-confirmed in-flight spending
+                            # limits; never retry exhausted account credits.
+                            delay_seconds = (30, 60, 120)[retries]
+                            print("TEMPORARY_IN_FLIGHT_BUDGET", args.engine_ref,
+                                  case["id"], "retry", retries + 1,
+                                  "after_s", delay_seconds, flush=True)
                         page.wait_for_timeout(delay_seconds * 1000)
                         question_box.fill(question)
                         question_box.press("Control+Enter")
@@ -289,7 +298,7 @@ def main() -> int:
                         page.wait_for_timeout(450)
                         observation = page.evaluate(JS_READ_RESULT)
                         retries += 1
-                    row["temporary_budget_retries"] = retries
+                    row["provider_rate_or_budget_retries"] = retries
                     row.update({
                         "response_captured": bool(observation["status_present"]
                                                    and observation["answer_text"]
@@ -333,7 +342,7 @@ def main() -> int:
                         "Provider diagnostic encountered; further paid calls "
                         "were not attempted. See captured video.")
                     break
-                page.wait_for_timeout(3000 if args.provider == "compatible" else 500)
+                page.wait_for_timeout(3000 if args.provider == "compatible" else 12000)
             video = page.video
             context.close()
             video_file = Path(video.path()) if video else None
