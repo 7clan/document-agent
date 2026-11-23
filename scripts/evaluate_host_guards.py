@@ -92,6 +92,15 @@ def main() -> int:
     }
     (output / "host_coverage.json").write_text(
         json.dumps(result, indent=2, ensure_ascii=False), encoding="utf-8")
+    for row in result["results"]:
+        # Synthetic benchmark only: print routing metadata, not indexed passages.
+        print("HOST_CASE " + json.dumps({
+            "id": row["id"], "critical": row["critical"],
+            "routing": row["routing"], "status": row.get("status"),
+            "source_count": len(row.get("citations", [])),
+            "source_locations_resolve": row.get("source_locations_resolve"),
+            "host_audit": row.get("host_audit", []),
+        }, sort_keys=True), flush=True)
     print("HOST_COVERAGE " + json.dumps(result["summary"]), flush=True)
     return 0 if result["summary"]["total"] == 44 and "failure_type" not in result else 1
 
