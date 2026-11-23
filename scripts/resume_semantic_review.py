@@ -105,20 +105,42 @@ def resume(seed: dict, rubric: dict, judge: Callable[[dict, str], Any],
                     break
                 except Exception as exc:  # noqa: BLE001 - external model failures
                     status = getattr(exc, "status_code", None)
+                    response = getattr(exc, "response", None)
+                    limit_source = None
+                    retry_after = None
+                    if response is not None:
+                        try:
+                            body = response.json()
+                            metadata = body.get("error", {}).get("metadata", {})
+                            limit_source = metadata.get("limit_source")
+                            header = response.headers.get("retry-after")
+                            retry_after = int(float(header)) if header else None
+                        except (AttributeError, TypeError, ValueError):
+                            pass
                     errors.append({
                         "engine": side, "id": case["id"], "http_status": status,
+                        "limit_source": limit_source,
                         "error_type": type(exc).__name__, "attempt": attempt + 1,
                     })
                     print(
                         "JUDGE_PROVIDER_ERROR", side, case["id"],
-                        "status", status, "attempt", attempt + 1, flush=True,
+                        "status", status, "limit_source", limit_source,
+                        "attempt", attempt + 1, flush=True,
                     )
-                    if status == 429 and attempt == 0 and requests < max_calls:
-                        # One bounded cooldown for temporary provider quotas.
-                        sleeper(50)
+                    temporary = (
+                        status == 429 or
+                        (status == 402 and limit_source ==
+                         "openrouter_in_flight_budget")
+                    )
+                    if temporary and attempt == 0 and requests < max_calls:
+                        # Transient in-flight budget holds release after settlement.
+                        # Respect the provider header with a bounded wait.
+                        delay = min(100, max(20, (retry_after or 40) + 4))
+                        print("TEMPORARY_QUOTA_COOLDOWN_SECONDS", delay, flush=True)
+                        sleeper(delay)
                         continue
-                    # Do not spin through 22 calls when the key has no credit,
-                    # provider denies access or the quota remains unavailable.
+                    # Spent key caps or insufficient account credits are not
+                    # solved by repeatedly submitting billable requests.
                     stopped = ("quota_or_provider_blocked" if status in
                                (401, 402, 403, 404, 429) else "judge_error")
                     break
