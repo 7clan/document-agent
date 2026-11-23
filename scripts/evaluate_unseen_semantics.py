@@ -209,7 +209,7 @@ def run(engine_root: Path, output: Path, provider: str, retrieval_mode: str) -> 
     from document_agent.claim_verifier import validate_claims
     from document_agent.db import connect
     from document_agent.ingest import ingest_folder
-    from document_agent.tools import search_documents, get_evidence
+    from document_agent.tools import get_evidence, search_documents
 
     with tempfile.TemporaryDirectory(prefix="unseen_ab_") as directory:
         folder = Path(directory) / "documents"
@@ -237,7 +237,7 @@ def run(engine_root: Path, output: Path, provider: str, retrieval_mode: str) -> 
                         "mode": found.get("retrieval_mode"), "fallback": fallback,
                         "error": found.get("error"),
                     })
-                except Exception as ex:
+                except Exception as ex:  # noqa: BLE001 - benchmark records genuine failures
                     result["retrieval"].append({"question": question,
                                                 "error": type(ex).__name__})
             for expected, claim, cite, quote in VERIFIER:
@@ -271,15 +271,15 @@ def run(engine_root: Path, output: Path, provider: str, retrieval_mode: str) -> 
                             "citations_resolve": bool(cited) and all(
                                 "error" not in get_evidence(conn, cite) for cite in cited),
                             "semantic_anchor_match": all(
-                                re.search(pattern, text, re.I) for pattern in gold["required"]),
+                                re.search(pattern, text, re.IGNORECASE) for pattern in gold["required"]),
                             "no_forbidden_assertion": not any(
-                                re.search(pattern, text, re.I)
+                                re.search(pattern, text, re.IGNORECASE)
                                 for pattern in gold.get("forbidden", [])),
                             "model_tool_calls": sum(
                                 call.get("origin") != "application"
                                 for call in answer.tool_calls),
                         })
-                    except Exception as ex:
+                    except Exception as ex:  # noqa: BLE001 - benchmark records genuine failures
                         record["provider_error"] = provider_error_diagnostic(ex)
                         record["exception"] = type(ex).__name__
                     record["latency_seconds"] = round(time.monotonic()-started,2)
