@@ -20,6 +20,7 @@ from .claim_verifier import _explicit_files, parse_answer, question_parts, valid
 from .guardrails import (
     exact_item_answer,
     exact_register_milestone_answer,
+    document_instruction_safety_answer,
     two_item_comparison_answer,
     unreadable_attachment_answer,
 )
@@ -2782,6 +2783,8 @@ def ask(conn: sqlite3.Connection, question: str, max_rounds: int = 8,
     # Application-owned scope decisions precede any LLM request. A request about
     # one exact BOQ identifier must not degrade into an unrelated broad total.
     guarded = unreadable_attachment_answer(conn, question, plan)
+    if guarded is None:
+        guarded = document_instruction_safety_answer(conn, question, plan)
     if guarded is None:
         guarded = two_item_comparison_answer(conn, question, plan)
     if guarded is None:
