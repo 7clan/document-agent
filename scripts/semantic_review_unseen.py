@@ -143,7 +143,7 @@ def make_model_judge(provider: str, model: str):
             "candidate_answer": answer[:10000],
         }
         response = client.chat.completions.create(
-            model=model, temperature=0,
+            model=model, temperature=0, max_tokens=256,
             messages=[
                 {"role": "system", "content": SYSTEM},
                 {"role": "user", "content": json.dumps(request)},
