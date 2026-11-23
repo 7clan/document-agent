@@ -102,8 +102,12 @@ JS_READ_RESULT = r"""() => {
         Boolean(e.compareDocumentPosition(candidateMarker) & Node.DOCUMENT_POSITION_FOLLOWING))
       .map(e => (e.innerText || e.textContent || "").trim());
   }
-  const citations = [...new Set(codes.filter(c =>
-    /[.]pdf \| |[.]docx \| |[.]xlsx? \| |[.]xlsm \| /i.test(c)
+  // Some Streamlit versions print verified original citations inline
+  // rather than as separate PRE blocks. Extract ONLY well-formed source IDs.
+  const inlinePattern = /([A-Za-z0-9_.-]+\.(?:pdf|docx|xlsx|xlsm|xls)\s+\|\s+(?:page\s+\d+\s+\|\s+chunk\s+\d+|[A-Za-z0-9 _-]+![A-Z]{1,3}\d+|[A-Za-z0-9 _-]+\s+\|\s+row\s+\d+|paragraph\s+\d+|table\s+\d+\s+\|\s+row\s+\d+))/gi;
+  const inline = Array.from(answerText.matchAll(inlinePattern)).map(m => m[1].trim());
+  const citations = [...new Set([...codes, ...inline].filter(c =>
+    /[.](?:pdf|docx|xlsx?|xlsm) \| /i.test(c)
   ))];
   const toolCalls = body.match(/Model document-tool calls:\s*(\d+)/);
   const limitSource = body.match(/"limit_source"\s*:\s*"([^"]+)"/);
@@ -126,8 +130,8 @@ def main() -> int:
     parser.add_argument("--corpus-root", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--port", type=int, default=18951)
-    parser.add_argument("--provider", choices=("groq",), default="groq")
-    parser.add_argument("--model", default="openai/gpt-oss-20b")
+    parser.add_argument("--provider", choices=("groq", "compatible"), default="compatible")
+    parser.add_argument("--model", default="google/gemma-4-31b-it")
     args = parser.parse_args()
     engine = args.engine_root.resolve()
     corpus = args.corpus_root.resolve()
@@ -136,7 +140,7 @@ def main() -> int:
         parser.error("Refusing to overwrite an existing recorded benchmark")
     if not (engine / "app.py").is_file() or not corpus.is_dir():
         parser.error("An original app.py checkout and shared corpus are required")
-    key_name = "GROQ_API_KEY"
+    key_name = "GROQ_API_KEY" if args.provider == "groq" else "COMPATIBLE_API_KEY"
     if not os.getenv(key_name, "").strip():
         parser.error(f"{key_name} secret missing; no fake recording permitted")
     out.mkdir(parents=True, exist_ok=True)
