@@ -203,7 +203,8 @@ QA = [
 ]
 
 
-def run(engine_root: Path, output: Path, provider: str, retrieval_mode: str) -> dict:
+def run(engine_root: Path, output: Path, provider: str, retrieval_mode: str,
+        corpus_root: Path | None = None) -> dict:
     sys.path.insert(0, str(engine_root / "src"))
     from document_agent.agent import ask, provider_error_diagnostic
     from document_agent.claim_verifier import validate_claims
@@ -212,9 +213,12 @@ def run(engine_root: Path, output: Path, provider: str, retrieval_mode: str) -> 
     from document_agent.tools import get_evidence, search_documents
 
     with tempfile.TemporaryDirectory(prefix="unseen_ab_") as directory:
-        folder = Path(directory) / "documents"
-        folder.mkdir()
-        make_documents(folder)
+        folder = corpus_root if corpus_root is not None else Path(directory) / "documents"
+        if corpus_root is None:
+            folder.mkdir()
+            make_documents(folder)
+        elif not folder.is_dir():
+            raise ValueError(f"Shared A/B corpus is missing: {folder}")
         digests = {
             x.name: hashlib.sha256(x.read_bytes()).hexdigest()
             for x in sorted(folder.iterdir()) if x.is_file()
@@ -246,6 +250,8 @@ def run(engine_root: Path, output: Path, provider: str, retrieval_mode: str) -> 
                                {"citation": cite, "quote": quote}]}]}
                 checked = validate_claims(conn, json.dumps(payload), [cite], claim)
                 accepted = checked["claims"][0]["status"] != "unverified"
+                print("VERIFIER_CASE", json.dumps({"claim": claim, "gold": expected,
+                      "accepted": accepted, "reason": checked["claims"][0]["reason"]}), flush=True)
                 result["verifier"].append({
                     "claim": claim, "gold_supported": expected, "accepted": accepted,
                     "correct": accepted == expected,
@@ -324,12 +330,23 @@ def run(engine_root: Path, output: Path, provider: str, retrieval_mode: str) -> 
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--engine-root", required=True, type=Path)
+    parser.add_argument("--engine-root", type=Path)
+    parser.add_argument("--corpus-root", type=Path)
+    parser.add_argument("--generate-corpus", type=Path)
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--provider", choices=["none", "gemini", "compatible"], default="none")
     parser.add_argument("--mode", choices=["keyword", "hybrid"], default="keyword")
     args = parser.parse_args()
-    run(args.engine_root.resolve(), args.output, args.provider, args.mode)
+    if args.generate_corpus:
+        args.generate_corpus.mkdir(parents=True, exist_ok=True)
+        if any(args.generate_corpus.iterdir()):
+            parser.error("Generation requires an empty folder")
+        make_documents(args.generate_corpus)
+        return
+    if not args.engine_root:
+        parser.error("--engine-root is required for evaluation")
+    run(args.engine_root.resolve(), args.output, args.provider, args.mode,
+        args.corpus_root.resolve() if args.corpus_root else None)
 
 
 if __name__ == "__main__":
