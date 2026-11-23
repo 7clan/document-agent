@@ -248,6 +248,19 @@ def test_frozen_release_documents_are_ingested_and_critical_items_resolve(tmp_pa
     assert any(event["name"] == "host_source_instruction_boundary"
                for event in security.tool_calls)
 
+    optional_package = ask(
+        conn, "Can the optional energy store be ordered under the signed papers?",
+        provider="gemini")
+    assert optional_package.text.startswith("No.")
+    assert "not authorized" in optional_package.text
+    assert "remains open" in optional_package.text
+    assert optional_package.sources == [
+        "01_Signed_Pumping_Contract.pdf | page 1 | chunk 0",
+        "02_Signed_Change_Order_CO12.pdf | page 1 | chunk 0",
+        "03_Pending_Change_Request_CR13.pdf | page 1 | chunk 0",
+    ]
+    assert optional_package.verification_status == "evidence_linked"
+
     note_approval = ask(
         conn, "Does the draft project note authorize every change?",
         provider="gemini")
