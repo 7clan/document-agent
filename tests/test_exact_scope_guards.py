@@ -138,3 +138,156 @@ def test_frozen_release_documents_are_ingested_and_critical_items_resolve(tmp_pa
     assert "does NOT establish" in damaged.text
     assert not damaged.sources
     conn.close()
+
+
+def test_dual_item_comparison_never_substitutes_similar_ids(monkeypatch):
+    conn = _book()
+
+    def no_provider(*_args, **_kwargs):
+        raise AssertionError("Exact two-item comparison must use indexed cells")
+
+    monkeypatch.setattr("document_agent.agent._ask_gemini", no_provider)
+    answer = ask(conn, "Compare HP-103 and HP-1030 without confusing them.",
+                 provider="gemini")
+    assert answer.verification_status == "deterministically_verified"
+    assert "HP-103: SAR 950000" in answer.text
+    assert "HP-1030: SAR 1050000" in answer.text
+    assert "HP-1030 is higher by SAR 100000" in answer.text
+    assert answer.sources == ["BOQ.xlsx | Signed Base!B4",
+                              "BOQ.xlsx | Signed Base!B5"]
+    assert any(event["name"] == "host_exact_dual_item_comparison"
+               for event in answer.tool_calls)
+    conn.close()
+
+
+def test_dual_item_comparison_does_not_invent_missing_item():
+    conn = _book()
+    answer = ask(conn, "Compare HP-103 and HP-999.",
+                 provider="gemini")
+    assert answer.verification_status == "unverified"
+    assert not answer.sources
+    assert "could not be established" in answer.text
+    assert "950000" not in answer.text
+    conn.close()
+
+
+def test_dual_item_comparison_requires_unique_original_records():
+    conn = _book()
+    doc = conn.execute(
+        "SELECT id FROM documents WHERE path='BOQ.xlsx'").fetchone()[0]
+    conn.execute(
+        "INSERT INTO sheet_rows(document_id,sheet,row_num,cells_json)"
+        " VALUES(?,?,?,?)",
+        (doc, "Another Sheet", 1, json.dumps({
+            "A": {"value": "Item ID"},
+            "B": {"value": "Total Amount (SAR)"}})))
+    conn.execute(
+        "INSERT INTO sheet_rows(document_id,sheet,row_num,cells_json)"
+        " VALUES(?,?,?,?)",
+        (doc, "Another Sheet", 2, json.dumps({
+            "A": {"value": "HP-103"},
+            "B": {"value": 700000}})))
+    answer = ask(conn, "Compare HP-103 and HP-1030.", provider="gemini")
+    assert answer.verification_status == "unverified"
+    assert not answer.sources
+    assert "950000" not in answer.text
+    conn.close()
+
+
+def test_dual_item_comparison_avoids_mixed_currency_subtraction():
+    conn = _book()
+    doc = conn.execute(
+        "SELECT id FROM documents WHERE path='BOQ.xlsx'").fetchone()[0]
+    # The original item remains SAR; the second belongs to a separate EUR sheet.
+    conn.execute(
+        "DELETE FROM sheet_rows WHERE document_id=? AND sheet='Signed Base' "
+        "AND row_num=5", (doc,))
+    conn.execute(
+        "INSERT INTO sheet_rows(document_id,sheet,row_num,cells_json)"
+        " VALUES(?,?,?,?)",
+        (doc, "EUR Costs", 1, json.dumps({
+            "A": {"value": "Item ID"},
+            "B": {"value": "Total Amount (EUR)"}})))
+    conn.execute(
+        "INSERT INTO sheet_rows(document_id,sheet,row_num,cells_json)"
+        " VALUES(?,?,?,?)",
+        (doc, "EUR Costs", 2, json.dumps({
+            "A": {"value": "HP-1030"},
+            "B": {"value": 1050000}})))
+    answer = ask(conn, "Compare HP-103 and HP-1030.", provider="gemini")
+    assert answer.verification_status == "unverified"
+    assert "different currencies" in answer.text
+    assert "higher by" not in answer.text
+    conn.close()
+
+
+def _milestone_register():
+    conn = connect(":memory:")
+    conn.execute("INSERT INTO documents(path,kind,status) "
+                 "VALUES('Milestones.xlsx','xlsx','ready')")
+    doc = conn.execute(
+        "SELECT id FROM documents WHERE path='Milestones.xlsx'").fetchone()[0]
+    entries = [
+        ["Milestone", "Deliverable", "Date", "Classification", "Approval"],
+        ["M-01", "IFC Drawings", "2028-02-15", "Contractual", "Signed contract"],
+        ["M-02", "Factory dossier", "2028-04-30", "Contractual", "Signed contract"],
+        ["M-03", "Final commissioning", "2028-11-20", "Contractual", "Signed contract"],
+        ["M-04", "Internal readiness", "2028-11-10", "Planning", "Internal only"],
+        ["M-05", "Proposed handover", "2028-12-05", "Proposal", "Not approved"],
+    ]
+    for number, values in enumerate(entries, 1):
+        conn.execute(
+            "INSERT INTO sheet_rows(document_id,sheet,row_num,cells_json)"
+            " VALUES(?,?,?,?)",
+            (doc, "Milestone Register", number, json.dumps({
+                chr(65 + i): {"value": v} for i, v in enumerate(values)})))
+    return conn
+
+
+def test_milestone_exact_date_and_status_citations_need_no_provider(monkeypatch):
+    conn = _milestone_register()
+
+    def no_provider(*_args, **_kwargs):
+        raise AssertionError("Exact register cells must be resolved locally")
+
+    monkeypatch.setattr("document_agent.agent._ask_gemini", no_provider)
+    date_answer = ask(conn, "What date is attached to M-02?", provider="gemini")
+    assert "2028-04-30" in date_answer.text
+    assert date_answer.sources == ["Milestones.xlsx | Milestone Register | row 3"]
+    assert date_answer.verification_status == "deterministically_verified"
+
+    internal = ask(conn, "Is M-04 a binding deadline?", provider="gemini")
+    assert internal.text.startswith("No,")
+    assert "Planning" in internal.text
+    assert internal.sources == ["Milestones.xlsx | Milestone Register | row 5"]
+
+    pending = ask(conn, "Was M-05 approved as a new final date?", provider="gemini")
+    assert pending.text.startswith("No,")
+    assert "Not approved" in pending.text
+    assert pending.sources == ["Milestones.xlsx | Milestone Register | row 6"]
+    assert pending.verification_status == "deterministically_verified"
+    conn.close()
+
+
+def test_milestone_missing_or_conflicting_record_never_fabricates_date():
+    conn = _milestone_register()
+    missing = ask(conn, "What date is attached to M-99?", provider="gemini")
+    assert "No exact milestone was found" in missing.text
+    assert missing.verification_status == "unverified"
+    assert not missing.sources
+
+    doc = conn.execute(
+        "SELECT id FROM documents WHERE path='Milestones.xlsx'").fetchone()[0]
+    conn.execute("INSERT INTO sheet_rows(document_id,sheet,row_num,cells_json) "
+                 "VALUES(?,?,?,?)", (doc, "Milestone Register", 8, json.dumps({
+                     "A": {"value": "M-02"},
+                     "B": {"value": "Other stage"},
+                     "C": {"value": "2030-09-10"},
+                     "D": {"value": "Proposal"},
+                     "E": {"value": "Pending"}})))
+    conflict = ask(conn, "What date is attached to M-02?", provider="gemini")
+    assert conflict.verification_status == "unverified"
+    assert not conflict.sources
+    assert "Conflicting or duplicate" in conflict.text
+    assert "2028-04-30" not in conflict.text
+    conn.close()
