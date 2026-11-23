@@ -275,6 +275,12 @@ def exact_register_milestone_answer(conn: sqlite3.Connection, question: str,
         r"planning target|final date)\b", question))
     if not wants_date and not wants_status:
         return None
+    # Approval of physical scope or cost is not a dated milestone query.
+    if (wants_status and not wants_date
+            and not re.search(r"(?i)\b(?:milestone|deadline|handover|"
+                              r"completion date|target date|schedule|due date)\b",
+                              question)):
+        return None
 
     scoped_file = (plan.document_scope[0] if plan.scope_kind == "named"
                    and len(plan.document_scope) == 1 else "")
