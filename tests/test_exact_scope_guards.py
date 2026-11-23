@@ -137,6 +137,26 @@ def test_frozen_release_documents_are_ingested_and_critical_items_resolve(tmp_pa
     assert "09_Damaged_Attachment.pdf" in damaged.text
     assert "does NOT establish" in damaged.text
     assert not damaged.sources
+    comparative = ask(
+        conn, "Compare HP-103 and HP-1030 without confusing them.",
+        provider="gemini")
+    assert comparative.verification_status == "deterministically_verified"
+    assert len(comparative.sources) == 2
+    assert "Signed Base!F6" in comparative.sources[0]
+    assert "Signed Base!F10" in comparative.sources[1]
+    assert "higher by SAR 100000" in comparative.text
+
+    for question, expected_cell, expected_status in (
+        ("What date is attached to M-02?", "row 3", "2028-04-30"),
+        ("Is M-04 a binding deadline?", "row 5", "No,"),
+        ("Was M-05 approved as a new final date?", "row 6", "No,"),
+    ):
+        original = ask(conn, question, provider="gemini")
+        assert original.verification_status == "deterministically_verified"
+        assert original.sources == [
+            "06_Delivery_Register.xlsx | Delivery Register | " + expected_cell]
+        assert expected_status in original.text
+
     conn.close()
 
 
