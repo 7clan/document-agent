@@ -1,0 +1,101 @@
+name: Check refreshed private API keys (one small request per provider)
+
+on:
+  push:
+    branches: [experiment/final-paired-interview-2026-11-23]
+    paths:
+      - .github/workflows/check-refreshed-provider-keys.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  gemini-key:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    env:
+      # Same aliases used by the full interview: values never printed.
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: One real Gemini 2.5 Flash minimal completion
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json, os, urllib.request, urllib.error
+          key = os.environ.get("GEMINI_API_KEY", "").strip()
+          if not key:
+              print("GEMINI_RESULT secret_absent")
+              raise SystemExit(1)
+          payload = json.dumps({
+              "contents": [{"parts": [{"text": "Reply only READY."}]}],
+              "generationConfig": {"temperature": 0, "maxOutputTokens": 24}
+          }).encode()
+          req = urllib.request.Request(
+              "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",
+              data=payload,
+              headers={"x-goog-api-key": key, "Content-Type": "application/json"},
+              method="POST")
+          try:
+              with urllib.request.urlopen(req, timeout=35) as response:
+                  data = json.load(response)
+                  valid = bool(data.get("candidates"))
+                  print("GEMINI_RESULT", "model_responded" if valid else "empty_response",
+                        "http_status", response.status)
+                  raise SystemExit(0 if valid else 1)
+          except urllib.error.HTTPError as err:
+              print("GEMINI_RESULT provider_refused http_status", err.code)
+              raise SystemExit(1)
+          except (urllib.error.URLError, TimeoutError, OSError, ValueError):
+              print("GEMINI_RESULT network_or_response_error")
+              raise SystemExit(1)
+          PY
+
+  openrouter-key:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    env:
+      COMPATIBLE_API_KEY: ${{ secrets.OPENROUTER_API_KEY || secrets.OPEN_ROUTER_API_KEY || secrets.OPENROUTER_KEY || secrets.OPENROUTER }}
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: One real OpenRouter Nemotron minimal completion
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json, os, urllib.request, urllib.error
+          key = os.environ.get("COMPATIBLE_API_KEY", "").strip()
+          if not key:
+              print("OPENROUTER_RESULT secret_absent")
+              raise SystemExit(1)
+          payload = json.dumps({
+              "model": "nvidia/nemotron-3.5-lightning",
+              "messages": [{"role": "user", "content": "Reply only READY."}],
+              "max_tokens": 24,
+              "temperature": 0
+          }).encode()
+          req = urllib.request.Request(
+              "https://openrouter.ai/api/v1/chat/completions",
+              data=payload,
+              headers={"Authorization": "Bearer " + key,
+                       "Content-Type": "application/json"},
+              method="POST")
+          try:
+              with urllib.request.urlopen(req, timeout=35) as response:
+                  data = json.load(response)
+                  valid = bool(data.get("choices"))
+                  print("OPENROUTER_RESULT", "model_responded" if valid
+                        else "empty_response", "http_status", response.status)
+                  raise SystemExit(0 if valid else 1)
+          except urllib.error.HTTPError as err:
+              # Status only; no response, token, account or metadata logged.
+              print("OPENROUTER_RESULT provider_refused http_status", err.code)
+              raise SystemExit(1)
+          except (urllib.error.URLError, TimeoutError, OSError, ValueError):
+              print("OPENROUTER_RESULT network_or_response_error")
+              raise SystemExit(1)
+          PY
