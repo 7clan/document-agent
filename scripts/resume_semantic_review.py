@@ -15,7 +15,10 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from semantic_review_unseen import make_model_judge, normalize_verdict, summarize
+if __package__:
+    from .semantic_review_unseen import make_model_judge, normalize_verdict, summarize
+else:
+    from semantic_review_unseen import make_model_judge, normalize_verdict, summarize
 
 
 def verify_seed(seed: dict, rubric_bytes: bytes, judge_identity: str) -> dict:
