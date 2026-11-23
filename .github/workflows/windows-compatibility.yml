@@ -7,6 +7,9 @@ on:
     paths:
       - pyproject.toml
       - requirements.lock
+      - src/document_agent/agent.py
+      - src/document_agent/guardrails.py
+      - tests/test_exact_scope_guards.py
       - .github/workflows/windows-compatibility.yml
   workflow_dispatch:
 
