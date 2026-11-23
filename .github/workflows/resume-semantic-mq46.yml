@@ -1,0 +1,59 @@
+name: Resume unfinished MQ-46 Gemma semantic judgments
+
+on:
+  push:
+    branches: [feature/semantic-verifier-false-negatives]
+    paths:
+      - .github/workflows/resume-semantic-mq46.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: mq46-resume-semantic-gemma
+  cancel-in-progress: false
+
+jobs:
+  resume-only-unreviewed:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      GH_TOKEN: ${{ github.token }}
+      OPENROUTER2: ${{ secrets.OPENROUTER2 }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install judge HTTP client
+        run: pip install 'openai>=1.0,<3'
+      - name: Recover 14 previously completed semantic judgments
+        run: |
+          gh run download 45179733564 \
+            --repo 7clan/document-agent \
+            --name semantic-reviewed-MQ46-main-vs-PR9 \
+            --dir original-reviewed
+          test -s original-reviewed/semantic-review-results/semantic_review.json
+      - name: Resume only 22 unreviewed frozen answers through OpenRouter2 Gemma
+        run: |
+          test -n "$OPENROUTER2"
+          python scripts/resume_semantic_review.py \
+            --prior original-reviewed/semantic-review-results/semantic_review.json \
+            --rubric evaluation/unseen_coldchain_interview.json \
+            --output resumed-semantic-results \
+            --judge-provider openrouter \
+            --judge-model google/gemma-4-31b-it \
+            --max-calls 32 \
+            --pause-seconds 6
+      - name: Preserve partial and final independent results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: resumed-MQ46-semantic-Gemma-main-vs-PR9
+          path: |
+            resumed-semantic-results/
+            original-reviewed/semantic-review-results/semantic_review.json
+            original-reviewed/semantic-review-results/semantic_review.csv
+          retention-days: 30
