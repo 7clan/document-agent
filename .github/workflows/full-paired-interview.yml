@@ -15,16 +15,18 @@ permissions:
 
 concurrency:
   group: full-44-recorded-ab
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   full-original-interviews:
     runs-on: ubuntu-latest
     timeout-minutes: 180
     env:
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       COMPATIBLE_API_KEY: ${{ secrets.OPENROUTER_API_KEY || secrets.OPEN_ROUTER_API_KEY || secrets.OPENROUTER_KEY || secrets.OPENROUTER }}
       COMPATIBLE_BASE_URL: https://openrouter.ai/api/v1
       COMPATIBLE_MODEL: nvidia/nemotron-3.5-lightning
+      GEMINI_MODEL: gemini-2.5-flash
       DOCUMENT_AGENT_EMBEDDING_ALLOW_DOWNLOAD: '1'
       DOCUMENT_AGENT_RETRIEVAL_MODE: hybrid
       HF_HUB_DISABLE_TELEMETRY: '1'
@@ -50,11 +52,11 @@ jobs:
         with:
           path: ~/.cache/huggingface
           key: minilm-l6-v2-huggingface-v1
-      - name: Check real private OpenRouter provider credential
+      - name: Check real private Gemini 2.5 Flash provider credential
         shell: bash
         run: |
-          if [ -z "$COMPATIBLE_API_KEY" ]; then
-            echo 'OPENROUTER secret missing: neither real model nor video can be claimed.'
+          if [ -z "$GEMINI_API_KEY" ]; then
+            echo 'GEMINI_API_KEY secret missing: neither real model nor video can be claimed.'
             exit 1
           fi
           echo 'Provider credential present. Exact unchanged baseline and candidate commits pinned.'
@@ -77,7 +79,7 @@ jobs:
             --engine-ref main \
             --engine-sha b4bfc744583060b5854184d7628fbd354e694771 \
             --corpus-root shared-frozen-corpus \
-            --model "$COMPATIBLE_MODEL" \
+            --provider gemini --model "$GEMINI_MODEL" \
             --output recorded/main --port 18951
           result=$?
           echo "MAIN_BROWSER_EXIT=$result" >> "$GITHUB_ENV"
@@ -93,7 +95,7 @@ jobs:
             --engine-ref feature/claim-evidence-hardening \
             --engine-sha 360a8afdb77710da56d5b06f2ae204f018c4a8fc \
             --corpus-root shared-frozen-corpus \
-            --model "$COMPATIBLE_MODEL" \
+            --provider gemini --model "$GEMINI_MODEL" \
             --output recorded/candidate --port 18952
           result=$?
           echo "CANDIDATE_BROWSER_EXIT=$result" >> "$GITHUB_ENV"
