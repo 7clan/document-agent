@@ -1,6 +1,8 @@
 """Fail-closed tests for original signed-scope and independent corroboration."""
 from __future__ import annotations
 
+import json
+
 from document_agent.addition_evidence import verified_added_scope
 from document_agent.db import connect
 from document_agent.query_plan import plan_question
@@ -73,4 +75,37 @@ def test_signed_guard_does_not_take_over_financial_or_mixed_document_question():
     ):
         assert verified_added_scope(
             conn, question, plan_question(conn, question)) is None
+    conn.close()
+
+
+def test_approved_boq_corroboration_requires_same_signed_change_order_id():
+    conn = _index(add_minutes=False)
+    conn.execute("INSERT INTO documents(path,kind,status) "
+                 "VALUES('Costs.xlsx','xlsx','ready')")
+    document_id = conn.execute(
+        "SELECT id FROM documents WHERE path='Costs.xlsx'").fetchone()[0]
+    payload = {
+        "A": {"value": "CO13-1"},
+        "B": {"value": "South Gallery extra cable tray"},
+        "C": {"value": 30},
+        "D": {"value": 450000},
+    }
+    conn.execute(
+        "INSERT INTO sheet_rows(document_id,sheet,row_num,cells_json) "
+        "VALUES(?,?,?,?)",
+        (document_id, "Approved CO12", 2, json.dumps(payload)))
+    question = "What additional cable tray did the signed instruction add?"
+    incorrect = verified_added_scope(conn, question, plan_question(conn, question))
+    assert incorrect.sources == ["Signed_Change_Order_CO12.pdf | page 1 | chunk 0"]
+
+    payload["A"]["value"] = "CO12-1"
+    conn.execute(
+        "UPDATE sheet_rows SET cells_json=? "
+        "WHERE document_id=? AND sheet='Approved CO12' AND row_num=2",
+        (json.dumps(payload), document_id))
+    correct = verified_added_scope(conn, question, plan_question(conn, question))
+    assert correct.sources == [
+        "Signed_Change_Order_CO12.pdf | page 1 | chunk 0",
+        "Costs.xlsx | Approved CO12 | row 2",
+    ]
     conn.close()
