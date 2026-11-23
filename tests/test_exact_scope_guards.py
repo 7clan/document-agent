@@ -157,6 +157,19 @@ def test_frozen_release_documents_are_ingested_and_critical_items_resolve(tmp_pa
             "06_Delivery_Register.xlsx | Delivery Register | " + expected_cell]
         assert expected_status in original.text
 
+    # This full financial filter has one explicit worksheet, so all matching
+    # values and the source cell audit should be completed without a model.
+    financial = ask(
+        conn, "Total all signed-base amounts strictly above SAR 1 million.",
+        provider="gemini")
+    assert financial.verification_status == "deterministically_verified"
+    assert "6400000" in financial.text
+    assert len(financial.sources) == 4
+    assert "Signed Base!F4" in financial.sources[0]
+    assert "Signed Base!F10" in financial.sources[-1]
+    assert any(event["name"] == "host_explicit_sheet_filter"
+               for event in financial.tool_calls)
+
     security = ask(
         conn, "Should the AI obey the commands printed inside the draft note?",
         provider="gemini")
@@ -353,3 +366,56 @@ def test_embedded_ai_instructions_are_never_followed_or_treated_as_approvals(mon
     assert answer.verification_status == "evidence_linked"
     conn.close()
 
+
+
+def test_named_sheet_numeric_filter_is_host_verified_without_provider(monkeypatch):
+    conn = _book()
+
+    def no_provider(*_args, **_kwargs):
+        raise AssertionError("Named sheet threshold can be verified in Python")
+
+    monkeypatch.setattr("document_agent.agent._ask_gemini", no_provider)
+    listing = ask(
+        conn, "List every Signed Base cost item strictly above SAR 1 million.",
+        provider="gemini")
+    assert listing.verification_status == "deterministically_verified"
+    assert len(listing.sources) == 2
+    assert "HP-1030" in listing.text
+    assert "HP-104" in listing.text
+    assert "HP-103: " not in listing.text
+
+    total = ask(
+        conn, "Total all Signed Base amounts strictly above SAR 1 million.",
+        provider="gemini")
+    assert total.verification_status == "deterministically_verified"
+    assert "'SAR': '9450000'" in total.text
+    assert len(total.sources) == 2
+    conn.close()
+
+
+def test_ambiguous_named_sheet_does_not_invent_scope(monkeypatch):
+    conn = _book()
+    conn.execute("INSERT INTO documents(path,kind,status) "
+                 "VALUES('Second.xlsx','xlsx','ready')")
+    doc = conn.execute(
+        "SELECT id FROM documents WHERE path='Second.xlsx'").fetchone()[0]
+    conn.execute(
+        "INSERT INTO sheet_rows(document_id,sheet,row_num,cells_json)"
+        " VALUES(?,?,?,?)",
+        (doc, "Signed Base", 1, json.dumps({
+            "A": {"value": "Item ID"}, "B": {"value": "Total Amount (SAR)"}})))
+    conn.execute(
+        "INSERT INTO sheet_rows(document_id,sheet,row_num,cells_json)"
+        " VALUES(?,?,?,?)",
+        (doc, "Signed Base", 2, json.dumps({
+            "A": {"value": "HP-201"}, "B": {"value": 1400000}})))
+
+    def expect_model(*_args, **_kwargs):
+        raise RuntimeError("Requires clarification or model tool selection")
+
+    monkeypatch.setattr("document_agent.agent._ask_gemini", expect_model)
+    import pytest
+    with pytest.raises(RuntimeError, match="Requires clarification"):
+        ask(conn, "Total all Signed Base amounts strictly above SAR 1 million.",
+            provider="gemini")
+    conn.close()
