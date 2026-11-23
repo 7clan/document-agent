@@ -1,4 +1,4 @@
-name: Real 18-question MQ-46 comparison - original MAIN vs PR10 pinned
+name: Real MQ46 MAIN versus patched PR10 - transient resilient paired interview
 
 on:
   push:
@@ -11,7 +11,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: frozen-mq46-main-vs-pr10-20261123
+  group: robust-mq46-main-vs-patched-pr10-20261123
   cancel-in-progress: false
 
 jobs:
@@ -33,10 +33,10 @@ jobs:
         with:
           ref: b4bfc744583060b5854184d7628fbd354e694771
           path: old_main
-      - name: Checkout PR10 code before this workflow was added, pinned
+      - name: Checkout patched PR10 candidate pinned after resolving exact-item hijack
         uses: actions/checkout@v4
         with:
-          ref: a3caffa883a6d887d2f722125a136e35c661c708
+          ref: 3c2496fde498e7e4a886533d5f1b171591be47d1
           path: candidate
       - name: Checkout frozen original MQ46 corpus and browser benchmark harness
         uses: actions/checkout@v4
@@ -73,15 +73,15 @@ jobs:
           assert len(questions)==18 and len({q['id'] for q in questions})==18
           print('FROZEN_18_QUESTIONS',hashlib.sha256(frozen).hexdigest(),flush=True)
           print('MAIN_SHA b4bfc744583060b5854184d7628fbd354e694771',flush=True)
-          print('PR10_SHA a3caffa883a6d887d2f722125a136e35c661c708',flush=True)
+          print('PR10_SHA 3c2496fde498e7e4a886533d5f1b171591be47d1',flush=True)
           PY
       - name: Generate single identical nine-file MQ46 corpus
         run: python harness/scripts/create_unseen_coldchain_corpus.py --output shared_mq46
-      - name: Film all 18 questions in actual original main Streamlit app
+      - name: Film actual original main answering all 18 questions (503-safe retry)
         shell: bash
         run: |
           set +e
-          PYTHONPATH="$PWD/old_main/src" python harness/scripts/record_unseen_interview.py \
+          PYTHONPATH="$PWD/old_main/src" python scoring/scripts/record_mq46_robust.py \
             --engine-root old_main --engine-ref main \
             --engine-sha b4bfc744583060b5854184d7628fbd354e694771 \
             --corpus-root shared_mq46 --provider gemini \
@@ -91,13 +91,13 @@ jobs:
           exit 0
       - name: Cooldown for fair provider rate and in-flight quota
         run: sleep 90
-      - name: Film all 18 questions in actual pinned PR10 Streamlit app
+      - name: Film patched PR10 answering all 18 questions (503-safe retry)
         shell: bash
         run: |
           set +e
-          PYTHONPATH="$PWD/candidate/src" python harness/scripts/record_unseen_interview.py \
+          PYTHONPATH="$PWD/candidate/src" python scoring/scripts/record_mq46_robust.py \
             --engine-root candidate --engine-ref feature/semantic-verifier-false-negatives \
-            --engine-sha a3caffa883a6d887d2f722125a136e35c661c708 \
+            --engine-sha 3c2496fde498e7e4a886533d5f1b171591be47d1 \
             --corpus-root shared_mq46 --provider gemini \
             --model "$GEMINI_MODEL" --output records/candidate --port 19052
           result=$?
@@ -138,7 +138,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: pinned-MQ46-MAIN-vs-PR10-real-browser-interviews
+          name: robust-MQ46-MAIN-vs-patched-PR10-real-browser-interviews
           path: |
             records/main/browser_results.json
             records/main/full_uncut_interview.webm
