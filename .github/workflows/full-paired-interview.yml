@@ -1,0 +1,154 @@
+name: Full 44-question paired LIVE interview (main vs newest)
+
+on:
+  push:
+    branches: [experiment/final-paired-interview-2026-11-23]
+    paths:
+      - .github/workflows/full-paired-interview.yml
+      - scripts/record_full_interview_ab.py
+      - scripts/render_paired_interviews.py
+      - scripts/run_frozen_acceptance.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: full-44-recorded-ab
+  cancel-in-progress: false
+
+jobs:
+  full-original-interviews:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      COMPATIBLE_API_KEY: ${{ secrets.OPENROUTER_API_KEY || secrets.OPEN_ROUTER_API_KEY || secrets.OPENROUTER_KEY || secrets.OPENROUTER }}
+      COMPATIBLE_BASE_URL: https://openrouter.ai/api/v1
+      COMPATIBLE_MODEL: nvidia/nemotron-3.5-lightning
+      DOCUMENT_AGENT_EMBEDDING_ALLOW_DOWNLOAD: '1'
+      DOCUMENT_AGENT_RETRIEVAL_MODE: hybrid
+      HF_HUB_DISABLE_TELEMETRY: '1'
+    steps:
+      - name: Checkout untouched release baseline (main pinned)
+        uses: actions/checkout@v4
+        with:
+          ref: b4bfc744583060b5854184d7628fbd354e694771
+          path: baseline
+      - name: Checkout untouched latest candidate (PR #9 pinned)
+        uses: actions/checkout@v4
+        with:
+          ref: 360a8afdb77710da56d5b06f2ae204f018c4a8fc
+          path: candidate
+      - name: Checkout independent benchmark and browser recorder
+        uses: actions/checkout@v4
+        with:
+          path: harness
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: minilm-l6-v2-huggingface-v1
+      - name: Check real private OpenRouter provider credential
+        shell: bash
+        run: |
+          if [ -z "$COMPATIBLE_API_KEY" ]; then
+            echo 'OPENROUTER secret missing: neither real model nor video can be claimed.'
+            exit 1
+          fi
+          echo 'Provider credential present. Exact unchanged baseline and candidate commits pinned.'
+      - name: Install app and real Chromium browser
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e './harness[dev,openai,embeddings]'
+          python -m pip install playwright
+          python -m playwright install --with-deps chromium
+      - name: Build one identical nine-file fictional corpus for both versions
+        run: |
+          python harness/scripts/create_release_corpus.py --output shared-frozen-corpus
+      - name: Record all 44 questions in real unmodified MAIN app
+        id: baseline
+        shell: bash
+        run: |
+          set +e
+          PYTHONPATH="$PWD/baseline/src" python harness/scripts/record_full_interview_ab.py \
+            --engine-root baseline \
+            --engine-ref main \
+            --engine-sha b4bfc744583060b5854184d7628fbd354e694771 \
+            --corpus-root shared-frozen-corpus \
+            --model "$COMPATIBLE_MODEL" \
+            --output recorded/main --port 18951
+          result=$?
+          echo "MAIN_BROWSER_EXIT=$result" >> "$GITHUB_ENV"
+          echo "Unmodified main video exit status: $result"
+          exit 0
+      - name: Record all 44 questions in real unmodified NEWEST app
+        id: candidate
+        shell: bash
+        run: |
+          set +e
+          PYTHONPATH="$PWD/candidate/src" python harness/scripts/record_full_interview_ab.py \
+            --engine-root candidate \
+            --engine-ref feature/claim-evidence-hardening \
+            --engine-sha 360a8afdb77710da56d5b06f2ae204f018c4a8fc \
+            --corpus-root shared-frozen-corpus \
+            --model "$COMPATIBLE_MODEL" \
+            --output recorded/candidate --port 18952
+          result=$?
+          echo "CANDIDATE_BROWSER_EXIT=$result" >> "$GITHUB_ENV"
+          echo "Unmodified candidate video exit status: $result"
+          exit 0
+      - name: Generate independent paired source comparison and raw answer table
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          python harness/scripts/render_paired_interviews.py \
+            --baseline recorded/main/browser_results.json \
+            --candidate recorded/candidate/browser_results.json \
+            --output recorded/comparison
+          result=$?
+          echo "COMPARE_REPORT_EXIT=$result"
+          exit 0
+      - name: Upload BOTH uncut videos, original answer transcripts and comparison
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: full-main-vs-newest-44-question-real-interviews
+          path: |
+            recorded/main/browser_results.json
+            recorded/main/full_uncut_interview.webm
+            recorded/main/full_uncut_interview.mp4
+            recorded/main/stills/*.png
+            recorded/candidate/browser_results.json
+            recorded/candidate/full_uncut_interview.webm
+            recorded/candidate/full_uncut_interview.mp4
+            recorded/candidate/stills/*.png
+            recorded/comparison/COMPARISON.md
+            recorded/comparison/all_44_paired_answers.csv
+          if-no-files-found: warn
+          retention-days: 30
+          compression-level: 0
+      - name: Honest result gate - missing cases cannot be counted as success
+        if: always()
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          reports = [Path('recorded/main/browser_results.json'),
+                     Path('recorded/candidate/browser_results.json')]
+          for p in reports:
+              if not p.exists():
+                  raise SystemExit(f'FAIL: {p} not generated')
+              data = json.loads(p.read_text())
+              print('VERIFIED', data['engine_ref'], data['summary'])
+              if not data.get('recording_verified'):
+                  raise SystemExit(f'FAIL: {data["engine_ref"]} not 44/44 fully recorded')
+          a, b = [json.loads(p.read_text()) for p in reports]
+          assert a['document_hashes'] == b['document_hashes']
+          assert a['ground_truth_sha256'] == b['ground_truth_sha256']
+          assert a['model'] == b['model']
+          print('VALIDATED same input files, questions, model and real videos')
+          PY
