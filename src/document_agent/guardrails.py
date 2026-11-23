@@ -5,8 +5,10 @@ whole identifier must never degrade into an all-items BOQ query.
 """
 from __future__ import annotations
 
+import json
 import re
 import sqlite3
+from datetime import date
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
@@ -63,6 +65,228 @@ def unreadable_attachment_answer(conn: sqlite3.Connection, question: str,
         [], _trace("host_unreadable_attachment", affected_files=len(failures)),
         verification_status="unverified",
     )
+
+
+
+def _exact_priced_rows(conn: sqlite3.Connection, identifier: str,
+                       file: str = "") -> list[dict] | None:
+    """Find whole exact BOQ IDs; None indicates incomplete/unverified search."""
+    candidates: list[dict] = []
+    offset = 0
+    while offset <= 10000:
+        result = query_spreadsheet(
+            conn, operator="all", value=0, file=file,
+            text_filter=identifier, limit=500, offset=offset)
+        if "error" in result or result.get("warnings") or result.get("unknown_count"):
+            return None
+        candidates.extend(result.get("matches", []))
+        if not result.get("has_more"):
+            break
+        offset += 500
+    else:
+        return None
+    exact = [row for row in candidates if any(
+        isinstance(value, str) and value.casefold().strip() == identifier
+        for value in row["values"].values())]
+    for row in exact:
+        original = get_evidence(conn, row["citation"])
+        if (original.get("row") != row["values"]
+                or _num(original.get("value", {}).get("value"))
+                != Decimal(row["amount_exact"])):
+            return None
+    return exact
+
+
+def two_item_comparison_answer(conn: sqlite3.Connection, question: str,
+                               plan: QueryPlan):
+    """Compare *two* unambiguous, exact-priced rows without model ID confusion."""
+    references = requested_references(question)
+    if (len(references) != 2 or plan.scope_kind == "mixed"
+            or not re.search(r"(?i)\b(?:compare|versus|vs\.?|difference between)\b",
+                             question)
+            or re.search(r"(?i)\b(?:contract sum|contract value|change order|"
+                         r"across documents|versus contract)\b", question)):
+        return None
+    scoped_file = ""
+    if plan.scope_kind == "named" and len(plan.document_scope) == 1:
+        scoped_file = plan.document_scope[0]
+        if not scoped_file.casefold().endswith((".xlsx", ".xlsm", ".xls", ".pdf")):
+            return None
+
+    rows = [_exact_priced_rows(conn, identifier, scoped_file)
+            for identifier in references]
+    # If neither reference belongs to the financial register, leave this
+    # question to the normal prose-document agent.
+    if all(result == [] for result in rows):
+        return None
+    from .agent import Answer
+
+    trace = _trace("host_exact_dual_item_comparison",
+                   identifiers=references, scoped_file=scoped_file or None)
+    if any(result is None for result in rows):
+        return Answer(
+            "The indexed financial records contain incomplete or unverified "
+            "amount data. The two items cannot be safely compared.",
+            [], trace, verification_status="unverified")
+    if any(len(result) != 1 for result in rows):
+        return Answer(
+            "A unique, exact-priced record for each requested item could not "
+            "be established. No amount or comparison is inferred; specify "
+            "the workbook or worksheet to disambiguate.",
+            [], trace, verification_status="unverified")
+    left, right = rows[0][0], rows[1][0]
+    if left["currency"] != right["currency"]:
+        return Answer(
+            f"The exact items have different currencies "
+            f"({left['currency']} versus {right['currency']}). No direct "
+            "difference is calculated without a conversion basis.",
+            [left["citation"], right["citation"]], trace,
+            verification_status="unverified")
+    left_amount, right_amount = (Decimal(left["amount_exact"]),
+                                Decimal(right["amount_exact"]))
+    higher = ("equal" if left_amount == right_amount
+              else references[0].upper() if left_amount > right_amount
+              else references[1].upper())
+    difference = abs(right_amount - left_amount)
+    lines = [
+        f"{references[0].upper()}: {left['currency']} {left_amount} — {left['citation']}",
+        f"{references[1].upper()}: {right['currency']} {right_amount} — {right['citation']}",
+        (f"The amounts are equal (difference {left['currency']} 0)."
+         if higher == "equal" else
+         f"{higher} is higher by {left['currency']} {difference}."),
+    ]
+    return Answer(
+        "\n".join(lines), [left["citation"], right["citation"]],
+        trace, verification_status="deterministically_verified",
+        structured={"identifiers": references, "currency": left["currency"],
+                    "absolute_difference": str(difference)})
+
+
+def exact_register_milestone_answer(conn: sqlite3.Connection, question: str,
+                                    plan: QueryPlan):
+    """Read one explicitly named milestone from an indexed register.
+
+    Only accepts an actual ID/date/classification/approval column set.
+    A row identifies what a register *records*; it cannot independently
+    establish approval from missing or unrelated contract documents.
+    """
+    identifiers = requested_references(question)
+    if (len(identifiers) != 1 or plan.scope_kind == "mixed"
+            or not re.fullmatch(r"[a-z]{1,5}[-_]\d+", identifiers[0])
+            or re.search(r"(?i)\b(?:compare|versus|all|every|between)\b", question)):
+        return None
+    wants_date = bool(re.search(
+        r"(?i)\b(?:what date|which date|date attached|when (?:is|was|must)|"
+        r"what (?:is|was) the deadline)\b", question))
+    wants_status = bool(re.search(
+        r"(?i)\b(?:binding deadline|contractual deadline|approved|approval|"
+        r"planning target|final date)\b", question))
+    if not wants_date and not wants_status:
+        return None
+
+    scoped_file = (plan.document_scope[0] if plan.scope_kind == "named"
+                   and len(plan.document_scope) == 1 else "")
+    if scoped_file and not scoped_file.casefold().endswith((".xlsx", ".xlsm", ".xls")):
+        return None
+
+    selected = []
+    register_seen = False
+    records = conn.execute(
+        "SELECT d.path,s.sheet,s.row_num,s.cells_json FROM sheet_rows s "
+        "JOIN documents d ON d.id=s.document_id "
+        "WHERE d.status='ready' AND d.kind IN ('xlsx','xlsm','xls') "
+        "ORDER BY d.path,s.sheet,s.row_num")
+    sheets: dict[tuple[str, str], list] = {}
+    for row in records:
+        if scoped_file and row["path"] != scoped_file:
+            continue
+        sheets.setdefault((row["path"], row["sheet"]), []).append(row)
+    for (file, sheet), entries in sheets.items():
+        headers = None
+        header_row_num = -1
+        for entry in entries:
+            cells = {col: str(value.get("value") or "").strip().casefold()
+                     for col, value in json.loads(entry["cells_json"]).items()}
+            found = {}
+            for col, value in cells.items():
+                if value in {"milestone", "milestone id", "milestone ref", "reference"}:
+                    found["identifier"] = col
+                elif value in {"date", "due date", "target date", "deadline"}:
+                    found["date"] = col
+                elif value in {"classification", "category", "status"}:
+                    found["classification"] = col
+                elif value in {"approval", "approval status", "authorization"}:
+                    found["approval"] = col
+                elif value in {"deliverable", "description", "activity"}:
+                    found["deliverable"] = col
+            if "identifier" in found and "date" in found:
+                headers, header_row_num = found, entry["row_num"]
+                register_seen = True
+                break
+        if headers is None:
+            continue
+        for entry in entries:
+            if entry["row_num"] <= header_row_num:
+                continue
+            values = {col: entry_value.get("value")
+                      for col, entry_value in json.loads(entry["cells_json"]).items()}
+            identifier = values.get(headers["identifier"])
+            if not isinstance(identifier, str) or identifier.strip().casefold() != identifiers[0]:
+                continue
+            citation = f"{file} | {sheet} | row {entry['row_num']}"
+            if get_evidence(conn, citation).get("row") != values:
+                from .agent import Answer
+                return Answer(
+                    "The original milestone row could not be verified.",
+                    [], _trace("host_exact_milestone", identifier=identifiers[0]),
+                    verification_status="unverified")
+            selected.append((values, headers, citation))
+    if not register_seen:
+        return None
+
+    from .agent import Answer
+
+    trace = _trace("host_exact_milestone", identifier=identifiers[0])
+    if len(selected) != 1:
+        return Answer(
+            ("No exact milestone was found in the readable indexed registers."
+             if not selected else
+             "Conflicting or duplicate milestone rows were found across registers.")
+            + " No date or approval status is inferred.",
+            [], trace, verification_status="unverified")
+    values, cols, citation = selected[0]
+    raw_date = values.get(cols["date"])
+    try:
+        date_text = date.fromisoformat(str(raw_date).strip()[:10]).isoformat()
+    except ValueError:
+        return Answer(
+            f"{identifiers[0].upper()} has no verifiable ISO calendar date in "
+            "the indexed milestone row.", [citation], trace,
+            verification_status="unverified")
+    description = str(values.get(cols.get("deliverable", "")) or "").strip()
+    classification = str(values.get(cols.get("classification", "")) or "").strip()
+    approval = str(values.get(cols.get("approval", "")) or "").strip()
+    if wants_status and not classification and not approval:
+        return Answer(
+            f"{identifiers[0].upper()} is dated {date_text}, but its approval "
+            f"and contractual status are not recorded. — {citation}",
+            [citation], trace, verification_status="unverified")
+    lines = [f"{identifiers[0].upper()} ({description or 'milestone'}) "
+             f"is dated {date_text} in the indexed register."]
+    if classification:
+        lines.append(f"Register classification: {classification}.")
+    if approval:
+        lines.append(f"Register approval field: {approval}.")
+    lines.append(f"Original source: {citation}")
+    # Do not claim that a register entry independently modifies a contract.
+    if wants_status:
+        lines.append("This describes the register entry, not independent "
+                     "evidence of a contract amendment or final client acceptance.")
+    return Answer(
+        " ".join(lines), [citation], trace,
+        verification_status="deterministically_verified",
+        structured={"milestone": identifiers[0], "date": date_text,
+                    "classification": classification, "approval": approval})
 
 
 def exact_item_answer(conn: sqlite3.Connection, question: str, plan: QueryPlan):
