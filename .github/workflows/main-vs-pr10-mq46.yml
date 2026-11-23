@@ -1,4 +1,4 @@
-name: Real MQ46 MAIN versus patched PR10 - transient resilient paired interview
+name: Real paired MAIN vs patched PR10 using stable Gemini 2.5 Flash
 
 on:
   push:
@@ -11,7 +11,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: robust-mq46-main-vs-patched-pr10-20261123
+  group: stable-25flash-mq46-main-vs-patched-pr10-20261123
   cancel-in-progress: false
 
 jobs:
@@ -20,7 +20,7 @@ jobs:
     timeout-minutes: 160
     env:
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY_2 }}
-      GEMINI_MODEL: gemini-3.5-flash-lite
+      GEMINI_MODEL: gemini-2.5-flash
       LLM_PROVIDER: gemini
       DOCUMENT_AGENT_RETRIEVAL_MODE: hybrid
       DOCUMENT_AGENT_EMBEDDING_ALLOW_DOWNLOAD: '1'
@@ -138,7 +138,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: robust-MQ46-MAIN-vs-patched-PR10-real-browser-interviews
+          name: stable-25flash-MQ46-MAIN-vs-patched-PR10-real-browser-interviews
           path: |
             records/main/browser_results.json
             records/main/full_uncut_interview.webm
@@ -173,7 +173,7 @@ jobs:
                   raise SystemExit('INCOMPLETE_18_ANSWERS '+report['engine_ref'])
           assert old['document_hashes']==new['document_hashes']
           assert old['ground_truth_sha256']==new['ground_truth_sha256']
-          assert old['model']==new['model']=='gemini-3.5-flash-lite'
+          assert old['model']==new['model']=='gemini-2.5-flash'
           assert old['provider']==new['provider']=='gemini'
           sem=Path('records/semantic_comparison/semantic_review.json')
           if not sem.exists():
