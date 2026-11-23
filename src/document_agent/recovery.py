@@ -5,13 +5,14 @@ contractual interpretation; that remains visibly source linked.
 """
 from __future__ import annotations
 
+import json
 import os
 import re
 import sqlite3
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
-from .claim_verifier import normalize
+from .claim_verifier import normalize, validate_claims
 from .evidence_ledger import build_ledger
 from .query_plan import QueryPlan
 from .tools import search_documents
@@ -67,8 +68,13 @@ def _search_terms(question: str, identifiers: tuple[str, ...]) -> list[str]:
     return [" ".join(words[:6])] if words else []
 
 
-def _link_unique_exact_quotes(answer: Answer, ledger: dict) -> int:
-    """Attach an omitted citation only for a unique, literal source phrase."""
+def _link_unique_exact_quotes(conn: sqlite3.Connection, question: str,
+                              answer: Answer, ledger: dict) -> int:
+    """Relink exact quotes only after the ordinary source and conflict checks.
+
+    A literal match alone does not establish document scope or resolve an
+    opposing indexed decision. Reuse the same claim verifier as normal answers.
+    """
     linked = 0
     for claim in answer.claims or []:
         if (claim.get("status") != "unverified" or claim.get("had_supports")
@@ -83,11 +89,26 @@ def _link_unique_exact_quotes(answer: Answer, ledger: dict) -> int:
         if len(matching) != 1:
             continue
         record = matching[0]
+        if record.document_status != "ready" or record.index_error:
+            continue
+        payload = json.dumps({
+            "answer": statement,
+            "insufficient": False,
+            "claims": [{
+                "text": statement,
+                "supports": [{"citation": record.source_id, "quote": statement}],
+            }],
+        })
+        checked = validate_claims(conn, payload, list(ledger), question)
+        checked_claims = checked.get("claims", [])
+        if (len(checked_claims) != 1
+                or checked_claims[0]["status"] == "unverified"
+                or checked_claims[0]["sources"] != [record.source_id]):
+            continue
         claim["status"] = "evidence_linked"
         claim["sources"] = [record.source_id]
-        claim["quotes"] = [{"citation": record.source_id,
-                            "quote": record.original()[:350]}]
-        claim["reason"] = "Exact original phrase; interpretation not independently verified"
+        claim["quotes"] = checked_claims[0]["quotes"]
+        claim["reason"] = "Exact source phrase; full provenance/conflict gate passed"
         answer.sources = list(dict.fromkeys([*answer.sources, record.source_id]))
         old = f"- {statement} *(source reference unavailable)*"
         new = f"- {statement} — {record.source_id}"
@@ -156,7 +177,7 @@ def recover_answer(
                 "source_count": len(found), "incomplete": bool(result.get("incomplete")),
             })
         ledger = build_ledger(conn, observed)
-    exact_links = _link_unique_exact_quotes(answer, ledger)
+    exact_links = _link_unique_exact_quotes(conn, question, answer, ledger)
     if exact_links:
         answer.tool_calls.append({"name": "recovery_exact_link", "origin": "application",
                                   "ok": True, "attempt": spent + 1, "count": exact_links})
