@@ -1,0 +1,60 @@
+name: Resume MQ-46 with alternate existing OpenRouter key
+
+on:
+  push:
+    branches: [feature/semantic-verifier-false-negatives]
+    paths:
+      - .github/workflows/resume-semantic-mq46-alternate-key.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: mq46-alternate-key-resume
+  cancel-in-progress: true
+
+jobs:
+  remaining-gemma-reviews:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      GH_TOKEN: ${{ github.token }}
+      OPENROUTER2: ${{ secrets.OPENROUTER_API_KEY || secrets.OPEN_ROUTER_API_KEY || secrets.OPENROUTER_KEY || secrets.OPENROUTER }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install model client
+        run: pip install 'openai>=1.0,<3'
+      - name: Recover all 20 original valid Gemma judgments
+        run: |
+          gh run download 45187790117 \
+            --repo 7clan/document-agent \
+            --name resumed-MQ46-semantic-Gemma-main-vs-PR9 \
+            --dir prior
+          test -s prior/resumed-semantic-results/semantic_review.json
+      - name: Continue only remaining judgments with same reviewer model
+        run: |
+          if [ -z "$OPENROUTER2" ]; then
+            echo 'ALTERNATE_KEY_NOT_CONFIGURED'; exit 0
+          fi
+          python scripts/resume_semantic_review.py \
+            --prior prior/resumed-semantic-results/semantic_review.json \
+            --rubric evaluation/unseen_coldchain_interview.json \
+            --output remaining-semantic-results \
+            --judge-provider openrouter \
+            --judge-model google/gemma-4-31b-it \
+            --max-calls 26 \
+            --pause-seconds 8
+      - name: Preserve resumed and baseline judgments
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: MQ46-Gemma-alternate-OpenRouter-key-review
+          path: |
+            remaining-semantic-results/
+            prior/resumed-semantic-results/
+          retention-days: 30
