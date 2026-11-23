@@ -1,0 +1,1 @@
+Explicit user-requested full 44-case real Gemma acceptance on feature/bounded-self-recovery, 2026-11-23. Frozen human labels and source verification unchanged. Abort on provider HTTP 402 or repeated HTTP 429. One workflow only; preserve JSON artifact. No secret values stored here.
