@@ -14,9 +14,9 @@ def _db(*, pending_text: str | None = None, second_pending: bool = False):
     conn = connect(":memory:")
     entries = [
         ("Signed_Project_Contract.pdf",
-         "Civil excavation and Phase 2 battery storage are excluded. "
-         "Phase 2 battery storage is an optional future package, "
-         "not authorized procurement."),
+         ("Civil excavation and Phase 2 battery storage are excluded. "
+          "Phase 2 battery storage is an optional future package, "
+          "not authorized procurement.")),
         ("Signed_Change_Order_CO12.pdf",
          "CO-12 does not authorize Phase 2 battery storage."),
         ("Pending_Change_Request_CR13.pdf",
@@ -26,8 +26,8 @@ def _db(*, pending_text: str | None = None, second_pending: bool = False):
     ]
     if second_pending:
         entries.append(("Pending_Change_Request_CR14.pdf",
-                        "CR-14 requests a Phase 2 battery procurement decision; "
-                        "it remains open."))
+                        ("CR-14 requests a Phase 2 battery procurement decision; "
+                         "it remains open.")))
     for name, content in entries:
         conn.execute("INSERT INTO documents(path,kind,status) "
                      "VALUES(?, 'pdf', 'ready')", (name,))
