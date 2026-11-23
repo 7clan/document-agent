@@ -181,6 +181,95 @@ def original_contract_subtotal_comparison(
                     "difference": str(abs(signed - base)), "currency": currency})
 
 
+def contrasted_internal_and_contractual_dates(
+        conn: sqlite3.Connection, question: str, plan: QueryPlan):
+    """Compare distinct planning and signed-handover dates without mixing proposals."""
+    if (plan.scope_kind == "mixed"
+            or not re.search(r"(?i)\b(?:contrast|compare|difference between)\b",
+                             question)
+            or not re.search(r"(?i)\binternal\b", question)
+            or not re.search(r"(?i)\bcontractual\b", question)
+            or not re.search(r"(?i)\b(?:target|readiness)\b", question)
+            or not re.search(r"(?i)\b(?:takeover|handover|commissioning|completion)\b",
+                             question)):
+        return None
+    from .agent import Answer
+
+    report = complete_milestone_schedule(
+        conn, "Separate every contractual schedule date from planning "
+        "and proposal dates.", plan)
+    if report is None:
+        return None
+    if (report.verification_status != "deterministically_verified"
+            or not report.structured):
+        return report
+    entries = report.structured["milestones"]
+    planning = [row for row in entries
+                if row["status"] == "planning" and
+                re.search(r"(?i)\b(?:internal|readiness|target)\b",
+                          row["description"])]
+    contractual = [row for row in entries
+                   if row["status"] == "contractual" and
+                   re.search(r"(?i)\b(?:handover|takeover|commissioning|completion)\b",
+                             row["description"])]
+    trace = _trace("host_planning_contractual_contrast")
+    if len(planning) != 1 or len(contractual) != 1:
+        return Answer(
+            "The indexed register does not establish exactly one internal target "
+            "and one contractual handover date. No comparison is inferred.",
+            [], trace, verification_status="unverified")
+    target, handover = planning[0], contractual[0]
+    target_dt = date.fromisoformat(target["date"])
+    handover_dt = date.fromisoformat(handover["date"])
+    sources = [target["citation"], handover["citation"]]
+    # Prefer the original coordination minutes and signed contract, not only
+    # register metadata, when their own contents corroborate both statements.
+    human_target = f"{target_dt.day} {target_dt.strftime('%B')} {target_dt.year}"
+    for row in conn.execute(
+        "SELECT d.path,w.location,w.text FROM word_blocks w "
+        "JOIN documents d ON d.id=w.document_id "
+        "WHERE d.status='ready' AND d.kind='docx' ORDER BY d.path,w.location"
+    ):
+        text = row["text"].casefold()
+        if (human_target.casefold() not in text
+                or not re.search(r"(?i)\b(?:internal|readiness)\b", text)
+                or not re.search(r"(?i)\bplanning\b", text)):
+            continue
+        citation = f"{row['path']} | {row['location']}"
+        if get_evidence(conn, citation).get("text") == row["text"]:
+            sources.append(citation)
+    human_handover = f"{handover_dt.day} {handover_dt.strftime('%B')} {handover_dt.year}"
+    for row in conn.execute(
+        "SELECT d.path,p.page,p.chunk,p.text FROM passages p "
+        "JOIN documents d ON d.id=p.document_id "
+        "WHERE d.status='ready' AND d.kind='pdf' ORDER BY d.path,p.page,p.chunk"
+    ):
+        name = row["path"].replace("_", " ")
+        text = row["text"].casefold()
+        if (not re.search(r"(?i)\bsigned\b.*\bcontract\b", name)
+                or human_handover.casefold() not in text
+                or not re.search(r"(?i)\bcontractually due\b", text)
+                or not re.search(r"(?i)\bhandover\b", text)):
+            continue
+        citation = f"{row['path']} | page {row['page']} | chunk {row['chunk']}"
+        if get_evidence(conn, citation).get("text") == row["text"]:
+            sources.append(citation)
+    delta = (handover_dt - target_dt).days
+    return Answer(
+        f"The internal planning target ({target['id']}) is {target['date']}; "
+        f"it is not a binding completion deadline. The contractual handover "
+        f"entry ({handover['id']}) is {handover['date']}. "
+        f"The contractual date is {abs(delta)} calendar days "
+        f"{'after' if delta > 0 else 'before' if delta < 0 else 'from'} "
+        "the internal target. This comparison excludes separate unapproved "
+        "handover proposals.",
+        list(dict.fromkeys(sources)), trace,
+        verification_status="deterministically_verified",
+        structured={"planning_date": target["date"],
+                    "contractual_date": handover["date"],
+                    "days_difference": delta})
+
+
 def complete_milestone_schedule(conn: sqlite3.Connection, question: str,
                                 plan: QueryPlan):
     """Separate complete unique register rows by their *recorded* status only."""
