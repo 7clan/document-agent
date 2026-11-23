@@ -181,8 +181,10 @@ The earlier pre-hardening offline snapshot had 13 host-resolved cases.
 This is routing/grounding coverage, **not a claim of 15/44 factual accuracy
 or a completed post-fix LLM acceptance benchmark**.
 
-[Offline code CI](https://github.com/7clan/document-agent/actions/runs/45088426725)
+[Offline Linux code CI](https://github.com/7clan/document-agent/actions/runs/45088568292)
 passed **350 tests**, Ruff, and retrieval checks on the new source guards.
+[Actual Windows Python 3.12 rerun](https://github.com/7clan/document-agent/actions/runs/45088560611)
+also passed **350 tests** and `pip check` on the same branch.
 No OpenRouter or Gemini inference costs were incurred by these changes.
 
 ## Merge decision
