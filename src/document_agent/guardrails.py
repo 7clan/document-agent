@@ -103,7 +103,7 @@ def _exact_priced_rows(conn: sqlite3.Connection, identifier: str,
 def document_instruction_safety_answer(conn: sqlite3.Connection, question: str,
                                        plan: QueryPlan):
     """Treat explicit instructions *to the AI* inside source files as data."""
-    if not (re.search(r"(?i)\b(?:should|must|can|may)\s+(?:an?\s+)?"
+    if not (re.search(r"(?i)\b(?:should|must|can|may)\s+(?:(?:the|an?)\s+)?"
                       r"(?:AI|assistant|model)\s+(?:obey|follow|execute|act on)\b",
                       question)
             and re.search(r"(?i)\b(?:commands?|instructions?|prompts?|rules?)\b",
