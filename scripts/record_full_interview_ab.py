@@ -84,22 +84,23 @@ JS_READ_RESULT = r"""() => {
   const heading = Array.from(document.querySelectorAll("h3"))
     .find(e => (e.innerText || "").trim() === "Source references");
   let codes = [];
+  // Streamlit code blocks render as PRE, not stCodeBlock on all versions.
+  const allBlocks = Array.from(document.querySelectorAll("pre"));
   if (heading) {
-    const all = Array.from(document.querySelectorAll('[data-testid="stCodeBlock"]'));
-    codes = all.filter(e =>
+    codes = allBlocks.filter(e =>
       Boolean(heading.compareDocumentPosition(e) & Node.DOCUMENT_POSITION_FOLLOWING)
-    ).map(e => (e.innerText || "").trim());
+    ).map(e => (e.innerText || e.textContent || "").trim());
   }
   const candidateMarker = Array.from(document.querySelectorAll("*"))
     .find(e => e.children.length === 0 &&
       (e.innerText || "").startsWith("Retrieved locations for manual review"));
   if (candidateMarker) {
-    codes = Array.from(document.querySelectorAll('[data-testid="stCodeBlock"]'))
+    codes = allBlocks
       .filter(e =>
         heading &&
         Boolean(heading.compareDocumentPosition(e) & Node.DOCUMENT_POSITION_FOLLOWING) &&
         Boolean(e.compareDocumentPosition(candidateMarker) & Node.DOCUMENT_POSITION_FOLLOWING))
-      .map(e => (e.innerText || "").trim());
+      .map(e => (e.innerText || e.textContent || "").trim());
   }
   const citations = [...new Set(codes.filter(c =>
     /[.]pdf \| |[.]docx \| |[.]xlsx? \| |[.]xlsm \| /i.test(c)
@@ -121,7 +122,8 @@ def main() -> int:
     parser.add_argument("--corpus-root", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--port", type=int, default=18951)
-    parser.add_argument("--model", default="nvidia/nemotron-3.5-lightning")
+    parser.add_argument("--provider", choices=("gemini", "compatible"), default="gemini")
+    parser.add_argument("--model", default="gemini-2.5-flash")
     args = parser.parse_args()
     engine = args.engine_root.resolve()
     corpus = args.corpus_root.resolve()
@@ -130,8 +132,9 @@ def main() -> int:
         parser.error("Refusing to overwrite an existing recorded benchmark")
     if not (engine / "app.py").is_file() or not corpus.is_dir():
         parser.error("An original app.py checkout and shared corpus are required")
-    if not os.getenv("COMPATIBLE_API_KEY", "").strip():
-        parser.error("COMPATIBLE_API_KEY secret missing; no fake recording permitted")
+    key_name = "GEMINI_API_KEY" if args.provider == "gemini" else "COMPATIBLE_API_KEY"
+    if not os.getenv(key_name, "").strip():
+        parser.error(f"{key_name} secret missing; no fake recording permitted")
     out.mkdir(parents=True, exist_ok=True)
     (out / "stills").mkdir()
     frozen_bytes = GROUND_TRUTH.read_bytes()
@@ -143,7 +146,7 @@ def main() -> int:
     }
     report = {
         "engine_ref": args.engine_ref, "engine_sha": args.engine_sha,
-        "model": args.model, "provider": "OpenRouter compatible Chat Completions",
+        "model": args.model, "provider": args.provider,
         "retrieval": "hybrid", "recorded_utc": datetime.now(UTC).isoformat(),
         "ground_truth_sha256": hashlib.sha256(frozen_bytes).hexdigest(),
         "document_hashes": document_hashes,
@@ -161,7 +164,8 @@ def main() -> int:
     save(out, report)
     env = dict(os.environ)
     env.update({
-        "LLM_PROVIDER": "compatible",
+        "LLM_PROVIDER": args.provider,
+        "GEMINI_MODEL": args.model,
         "COMPATIBLE_BASE_URL": "https://openrouter.ai/api/v1",
         "COMPATIBLE_MODEL": args.model,
         "DOCUMENT_AGENT_RETRIEVAL_MODE": "hybrid",
