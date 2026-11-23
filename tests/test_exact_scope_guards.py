@@ -226,6 +226,24 @@ def test_frozen_release_documents_are_ingested_and_critical_items_resolve(tmp_pa
     assert any(event["name"] == "host_source_instruction_boundary"
                for event in security.tool_calls)
 
+    note_approval = ask(
+        conn, "Does the draft project note authorize every change?",
+        provider="gemini")
+    assert note_approval.text.startswith("No.")
+    assert "untrusted source text" in note_approval.text
+    assert note_approval.sources == ["08_Untrusted_Project_Note.pdf | page 1 | chunk 0"]
+
+    for missing_query, expected in (
+        ("What is the consultant's direct phone number?",
+         "No requested phone/contact number was found"),
+        ("What is the contractual installment-payment timetable?",
+         "No contractual installment-payment timetable was found"),
+    ):
+        missing_result = ask(conn, missing_query, provider="gemini")
+        assert missing_result.text.startswith(expected)
+        assert missing_result.verification_status == "unverified"
+        assert not missing_result.sources
+
     conn.close()
 
 
