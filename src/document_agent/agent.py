@@ -31,6 +31,7 @@ from .semantic_verifier import verify_judgement
 from .spreadsheet import _records as _boq_records
 from .structured_reporting import (
     complete_milestone_schedule,
+    contrasted_internal_and_contractual_dates,
     original_contract_subtotal_comparison,
     verified_base_subtotal,
 )
@@ -2832,6 +2833,8 @@ def ask(conn: sqlite3.Connection, question: str, max_rounds: int = 8,
         guarded = verified_base_subtotal(conn, question, plan)
     if guarded is None:
         guarded = complete_milestone_schedule(conn, question, plan)
+    if guarded is None:
+        guarded = contrasted_internal_and_contractual_dates(conn, question, plan)
     if guarded is None:
         guarded = original_contract_subtotal_comparison(conn, question, plan)
     if (guarded is None and plan.scope_kind != "mixed"
