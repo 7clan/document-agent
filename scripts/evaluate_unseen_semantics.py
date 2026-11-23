@@ -333,7 +333,7 @@ def main():
     parser.add_argument("--engine-root", type=Path)
     parser.add_argument("--corpus-root", type=Path)
     parser.add_argument("--generate-corpus", type=Path)
-    parser.add_argument("--output", required=True, type=Path)
+    parser.add_argument("--output", type=Path)
     parser.add_argument("--provider", choices=["none", "gemini", "compatible"], default="none")
     parser.add_argument("--mode", choices=["keyword", "hybrid"], default="keyword")
     args = parser.parse_args()
@@ -343,8 +343,8 @@ def main():
             parser.error("Generation requires an empty folder")
         make_documents(args.generate_corpus)
         return
-    if not args.engine_root:
-        parser.error("--engine-root is required for evaluation")
+    if not args.engine_root or not args.output:
+        parser.error("--engine-root and --output are required for evaluation")
     run(args.engine_root.resolve(), args.output, args.provider, args.mode,
         args.corpus_root.resolve() if args.corpus_root else None)
 
