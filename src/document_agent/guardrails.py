@@ -272,8 +272,8 @@ def exact_register_milestone_answer(conn: sqlite3.Connection, question: str,
             f"and contractual status are not recorded. — {citation}",
             [citation], trace, verification_status="unverified")
     lines: list[str] = []
-    binding = bool(re.search(r"(?i)\\b(?:binding|contractual deadline)\\b", question))
-    approved = bool(re.search(r"(?i)\\b(?:approved|approval)\\b", question))
+    binding = bool(re.search(r"(?i)\b(?:binding|contractual deadline)\b", question))
+    approved = bool(re.search(r"(?i)\b(?:approved|approval)\b", question))
     if binding:
         if (classification.casefold() == "contractual"
                 and approval.casefold() in {"signed contract", "approved", "signed"}):
