@@ -170,6 +170,39 @@ def test_frozen_release_documents_are_ingested_and_critical_items_resolve(tmp_pa
     assert any(event["name"] == "host_explicit_sheet_filter"
                for event in financial.tool_calls)
 
+    # All original cells must agree before a subtotal can be asserted.
+    subtotal = ask(
+        conn, "What is the selected base subtotal, excluding the change-order sheet?",
+        provider="gemini")
+    assert subtotal.verification_status == "deterministically_verified"
+    assert "7,950,000" in subtotal.text
+    assert "05_Selected_BoQ.xlsx | Signed Base!F11" in subtotal.sources
+    assert all("Approved CO12" not in source for source in subtotal.sources)
+    assert len(subtotal.sources) == 7
+
+    comparison = ask(
+        conn, "Does the selected-base subtotal equal the original contract price?",
+        provider="gemini")
+    assert comparison.text.startswith("No.")
+    assert "7,950,000" in comparison.text
+    assert "8,200,000" in comparison.text
+    assert any("01_Signed_Pumping_Contract.pdf | page 2 | chunk 0" == source
+               for source in comparison.sources)
+    assert "Signed Base!F4" in " ".join(comparison.sources)
+    assert comparison.verification_status == "evidence_linked"
+
+    full_schedule = ask(
+        conn, "Separate every contractual schedule date from planning and proposal dates.",
+        provider="gemini")
+    assert full_schedule.verification_status == "deterministically_verified"
+    assert len(full_schedule.sources) == 5
+    assert full_schedule.sources == [
+        f"06_Delivery_Register.xlsx | Delivery Register | row {row}"
+        for row in range(2, 7)]
+    assert "M-03" in full_schedule.text and "2028-11-20" in full_schedule.text
+    assert "M-04" in full_schedule.text and "2028-11-10" in full_schedule.text
+    assert "M-05" in full_schedule.text and "2028-12-05" in full_schedule.text
+
     security = ask(
         conn, "Should the AI obey the commands printed inside the draft note?",
         provider="gemini")
@@ -418,4 +451,53 @@ def test_ambiguous_named_sheet_does_not_invent_scope(monkeypatch):
     with pytest.raises(RuntimeError, match="Requires clarification"):
         ask(conn, "Total all Signed Base amounts strictly above SAR 1 million.",
             provider="gemini")
+    conn.close()
+
+
+def test_subtotal_without_reported_and_reconciled_summary_fails_closed():
+    conn = _book()
+    result = ask(
+        conn, "What is the selected base subtotal, excluding the change-order sheet?",
+        provider="gemini")
+    assert result.verification_status == "unverified"
+    assert not result.sources
+    assert "could not be reconciled" in result.text
+    conn.close()
+
+
+def test_schedule_with_invalid_calendar_date_fails_closed():
+    conn = _milestone_register()
+    doc = conn.execute("SELECT id FROM documents WHERE path='Milestones.xlsx'").fetchone()[0]
+    conn.execute("UPDATE sheet_rows SET cells_json=? WHERE document_id=? "
+                 "AND sheet='Milestone Register' AND row_num=3",
+                 (json.dumps({
+                     "A": {"value": "M-02"}, "B": {"value": "Factory dossier"},
+                     "C": {"value": "2028-02-30"},
+                     "D": {"value": "Contractual"}, "E": {"value": "Signed contract"},
+                 }), doc))
+    result = ask(
+        conn, "Separate every contractual schedule date from planning and proposal dates.",
+        provider="gemini")
+    assert result.verification_status == "unverified"
+    assert "invalid calendar date" in result.text
+    assert not result.sources
+    conn.close()
+
+
+def test_schedule_conflicting_milestone_identifiers_fails_closed():
+    conn = _milestone_register()
+    doc = conn.execute("SELECT id FROM documents WHERE path='Milestones.xlsx'").fetchone()[0]
+    conn.execute("INSERT INTO sheet_rows(document_id,sheet,row_num,cells_json) "
+                 "VALUES(?,?,?,?)",
+                 (doc, "Milestone Register", 7, json.dumps({
+                     "A": {"value": "M-04"}, "B": {"value": "Conflicting forecast"},
+                     "C": {"value": "2029-01-01"}, "D": {"value": "Proposal"},
+                     "E": {"value": "Not approved"},
+                 })))
+    result = ask(
+        conn, "Separate every contractual schedule date from planning and proposal dates.",
+        provider="gemini")
+    assert result.verification_status == "unverified"
+    assert "Duplicate milestone identifiers" in result.text
+    assert not result.sources
     conn.close()
