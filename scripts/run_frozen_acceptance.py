@@ -67,6 +67,21 @@ def summarize_cases(rows: list[dict]) -> dict:
             row.get("all_sources_resolve") is True for row in cited),
         "expected_sources_covered": sum(
             row.get("all_expected_sources_covered") is True for row in rows),
+        # The legacy field above includes intentionally citation-free cases.
+        # The following measures only questions that actually require citations.
+        "evidence_required_cases": sum(
+            bool(row.get("expected_citations")) for row in rows),
+        "evidence_required_all_expected_sources": sum(
+            bool(row.get("expected_citations")) and
+            row.get("all_expected_sources_covered") is True for row in rows),
+        "critical_evidence_required_cases": sum(
+            bool(row.get("critical")) and bool(row.get("expected_citations"))
+            for row in rows),
+        "critical_evidence_required_all_expected_sources": sum(
+            bool(row.get("critical")) and bool(row.get("expected_citations"))
+            and row.get("all_expected_sources_covered") is True for row in rows),
+        "citation_free_expected_cases": sum(
+            not row.get("expected_citations") for row in rows),
         "critical_attempted": sum(bool(row.get("critical")) for row in rows),
         "critical_source_covered": sum(
             bool(row.get("critical")) and
