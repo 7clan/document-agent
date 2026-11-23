@@ -16,6 +16,7 @@ from typing import Any
 
 from dotenv import load_dotenv
 
+from .citation_assist import indexed_records, recover_literal_source, related_source_locations
 from .claim_verifier import _explicit_files, parse_answer, question_parts, validate_claims
 from .semantic_verifier import verify_judgement
 from .tools import (
@@ -1569,6 +1570,12 @@ def _source_linked_answer(conn: sqlite3.Connection, text: str, citations: list[s
     rendered: list[str] = []
     claims: list[dict[str, Any]] = []
     sources: list[str] = []
+    # Local-only citation lookup; never a semantic verifier or answer veto.
+    assist_enabled = os.getenv("DOCUMENT_AGENT_CITATION_ASSIST", "1").lower() not in {
+        "0", "false", "off", "no",
+    }
+    indexed_for_citations: list[dict[str, Any]] | None = None
+    recovered_count = 0
     for entry in payload["claims"]:
         if not isinstance(entry, dict) or not isinstance(entry.get("text"), str):
             continue
@@ -1577,6 +1584,16 @@ def _source_linked_answer(conn: sqlite3.Connection, text: str, citations: list[s
             continue
         supports = entry.get("supports")
         supports = supports[:8] if isinstance(supports, list) else []
+        if assist_enabled and not supports:
+            # Repair only missing citations supported by a literal indexed
+            # phrase, identifiers, and all explicit numbers. Never overwrite
+            # an invalid model-supplied reference or rejudge a claim.
+            if indexed_for_citations is None:
+                indexed_for_citations = indexed_records(conn)
+            recovered = recover_literal_source(statement, indexed_for_citations)
+            if recovered:
+                supports = [{"citation": cite} for cite in recovered]
+                recovered_count += 1
         local: list[dict[str, str]] = []
         original_texts: list[str] = []
         missing = False
@@ -1641,7 +1658,8 @@ def _source_linked_answer(conn: sqlite3.Connection, text: str, citations: list[s
     linked = bool(claims) and all(item["status"] == "evidence_linked" for item in claims)
     status = "evidence_linked" if linked and not payload["insufficient"] and not issues else "unverified"
     audit = {"name": "source_linking", "ok": linked,
-             "reason": "Citations checked; model claims were not fact-checked"}
+             "reason": "Citations checked; model claims were not fact-checked",
+             "literal_citations_recovered": recovered_count}
     needs_review = any(item["status"] == "unverified" for item in claims)
     omitted, original_sources, schedule_incomplete = _missing_schedule_evidence(
         conn, question, result_text, show_all=needs_review)
@@ -1661,6 +1679,17 @@ def _source_linked_answer(conn: sqlite3.Connection, text: str, citations: list[s
     if schedule_incomplete:
         result_text += "\n\nThe dated-source inventory is incomplete; narrow the folder or paginate."
         status = "unverified"
+    if assist_enabled and claims:
+        if indexed_for_citations is None:
+            indexed_for_citations = indexed_records(conn)
+        related = related_source_locations(
+            question, [item["text"] for item in claims], indexed_for_citations,
+            [*sources, *candidates], limit=8,
+        )
+        candidates.extend(related)
+        audit["additional_source_locations"] = len(related)
+    # These extra locations are suggestions for inspection, not claim proof;
+    # the answer text, time budget and original verification policy stay intact.
     return Answer(result_text or "The provider returned no answer text.",
                   list(dict.fromkeys(sources)), [*trace, audit],
                   structured={"candidate_sources": list(dict.fromkeys(candidates))}
