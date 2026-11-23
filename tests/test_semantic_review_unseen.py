@@ -2,7 +2,10 @@
 from __future__ import annotations
 
 from scripts.semantic_review_unseen import (
-    grade_case, grade_report, normalize_verdict, summarize,
+    grade_case,
+    grade_report,
+    normalize_verdict,
+    summarize,
 )
 
 
