@@ -1,4 +1,4 @@
-name: Full 44-question paired LIVE interview (main vs newest)
+name: Full 44-question paired LIVE interview with 429 cooldown (main vs newest)
 
 on:
   push:
@@ -52,11 +52,11 @@ jobs:
         with:
           path: ~/.cache/huggingface
           key: minilm-l6-v2-huggingface-v1
-      - name: Check real private OpenRouter credential for paced budget-aware recording
+      - name: Check real private Gemini API credential for paced recording
         shell: bash
         run: |
-          if [ -z "$COMPATIBLE_API_KEY" ]; then
-            echo 'OPENROUTER secret missing: neither real model nor video can be claimed.'
+          if [ -z "$GEMINI_API_KEY" ]; then
+            echo 'GEMINI_API_KEY secret missing: neither real model nor video can be claimed.'
             exit 1
           fi
           echo 'Provider credential present. Exact unchanged baseline and candidate commits pinned.'
@@ -79,7 +79,7 @@ jobs:
             --engine-ref main \
             --engine-sha b4bfc744583060b5854184d7628fbd354e694771 \
             --corpus-root shared-frozen-corpus \
-            --provider compatible --model "$COMPATIBLE_MODEL" \
+            --provider gemini --model "$GEMINI_MODEL" \
             --output recorded/main --port 18951
           result=$?
           echo "MAIN_BROWSER_EXIT=$result" >> "$GITHUB_ENV"
@@ -95,7 +95,7 @@ jobs:
             --engine-ref feature/claim-evidence-hardening \
             --engine-sha 360a8afdb77710da56d5b06f2ae204f018c4a8fc \
             --corpus-root shared-frozen-corpus \
-            --provider compatible --model "$COMPATIBLE_MODEL" \
+            --provider gemini --model "$GEMINI_MODEL" \
             --output recorded/candidate --port 18952
           result=$?
           echo "CANDIDATE_BROWSER_EXIT=$result" >> "$GITHUB_ENV"
