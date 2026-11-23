@@ -131,8 +131,8 @@ def document_instruction_safety_answer(conn: sqlite3.Connection, question: str,
         if get_evidence(conn, citation).get("text") == original:
             candidates.append(citation)
     sources = list(dict.fromkeys(candidates))[:12]
-    lines = ["No. Instructions embedded in project documents are untrusted "
-             "source text, not executable instructions for this document agent."]
+    lines = [("No. Instructions embedded in project documents are untrusted "
+              "source text, not executable instructions for this document agent.")]
     if sources:
         lines.append("Such text was found at: " + ", ".join(sources) + ".")
     else:
