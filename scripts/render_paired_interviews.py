@@ -72,8 +72,8 @@ def main() -> int:
         f"- Candidate commit: `{b['engine_sha'] if b else 'no recording'}`",
         f"- Same provider: **{a['model'] if a else 'N/A'}** through OpenRouter.",
         "- Unmodified original Streamlit apps; both sessions are uncut browser recordings.",
-        "- Model replies are **real**. Citation existence and labeled source recall "
-        "do **not** imply factual correctness.",
+        ("- Model replies are **real**. Citation existence and labeled source recall "
+         "do **not** imply factual correctness."),
         "- Any incomplete recording or 402/429 is a recorded failure, never a success.",
         "",
         "## Measured outcomes",
@@ -99,14 +99,14 @@ def main() -> int:
         "",
         "- `main/full_uncut_interview.webm` (and MP4, if encoding succeeded)",
         "- `candidate/full_uncut_interview.webm` (and MP4, if encoding succeeded)",
-        "- Original per-question source citations and displayed answers are in "
-        "`main/browser_results.json` and `candidate/browser_results.json`.",
+        ("- Original per-question source citations and displayed answers are in "
+         "`main/browser_results.json` and `candidate/browser_results.json`."),
         "",
         "## Full-answer correctness requires reading the actual answers",
         "",
-        "Automated citation checks are source *coverage* checks, not semantic "
-        "entailment checks. The full 44-answer transcript is saved alongside the "
-        "uncut videos for independent source-by-source grading.",
+        ("Automated citation checks are source *coverage* checks, not semantic "
+         "entailment checks. The full 44-answer transcript is saved alongside the "
+         "uncut videos for independent source-by-source grading."),
         "",
         "## Case-level source differences",
         "",
