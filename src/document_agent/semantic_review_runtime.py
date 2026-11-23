@@ -8,10 +8,13 @@ from __future__ import annotations
 
 import os
 import sqlite3
-from typing import TYPE_CHECKING, Any, Callable
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any
 
 from .semantic_verifier import (
-    VERIFIER_SYSTEM, verification_request, verify_judgement,
+    VERIFIER_SYSTEM,
+    verification_request,
+    verify_judgement,
 )
 from .tools import get_evidence
 
@@ -113,6 +116,7 @@ def make_provider_judge(provider: str, model: str | None = None
         raise ValueError("Unsupported semantic verification provider")
 
     from openai import OpenAI
+
     from .agent import _compatible_config
 
     key, chosen, base = _compatible_config(provider, model)
