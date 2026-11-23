@@ -98,7 +98,7 @@ def main() -> int:
         "# MQ-46 unseen document intelligence interview",
         "",
         "Original main compared with PR #9 on the same unseen cold-chain project.",
-        "Both were run through the actual Streamlit UI and Groq tool-calling model.",
+        "Both were run through the actual Streamlit UI with the same tool-capable model.",
         "This rubric was fixed before model calls and has not been modified after results.",
         "",
         "Same source files, question list, model and provider: "+str(common),
