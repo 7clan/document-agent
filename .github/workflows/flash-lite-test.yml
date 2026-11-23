@@ -1,0 +1,59 @@
+name: One real Gemini Flash-Lite document-tool access check
+on:
+  push:
+    branches: [experiment/final-paired-interview-2026-11-23]
+    paths:
+      - .github/workflows/flash-lite-test.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  one-real-question:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      GEMINI_MODEL: gemini-2.5-flash-lite
+      DOCUMENT_AGENT_RETRIEVAL_MODE: keyword
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Fail if no private Gemini key exists
+        run: test -n "$GEMINI_API_KEY"
+      - name: Install document agent
+        run: pip install -e '.[dev]'
+      - name: Run exactly one authentic model-grounded question
+        run: |
+          python scripts/create_release_corpus.py --output .local/flash_lite_corpus
+          python - <<'PY'
+          from pathlib import Path
+          from document_agent.agent import ask, provider_error_diagnostic
+          from document_agent.db import connect
+          from document_agent.ingest import ingest_folder
+          conn = connect(Path('.local/flash_lite_smoke.db'))
+          try:
+              ingest_folder(conn, str(Path('.local/flash_lite_corpus').resolve()))
+              try:
+                  answer = ask(
+                      conn,
+                      "Which electrical cabinets must be brought into service?",
+                      provider="gemini", model="gemini-2.5-flash-lite")
+                  print("FLASH_LITE_ONE_ACTUAL_ANSWER", {
+                      "status": answer.verification_status,
+                      "answer": answer.text[:850],
+                      "sources": answer.sources[:6],
+                      "tool_calls": [
+                          c.get("name") for c in answer.tool_calls
+                          if c.get("origin") != "application"],
+                  }, flush=True)
+                  assert ("P-11" in answer.text and "P-12" in answer.text
+                          and answer.sources), "Model reply lacks expected source-grounded facts"
+              except Exception as exc:
+                  print("FLASH_LITE_SAFE_PROVIDER_DIAGNOSTIC",
+                        provider_error_diagnostic(exc), flush=True)
+                  raise
+          finally:
+              conn.close()
+          PY
