@@ -1,0 +1,84 @@
+name: Check Gemma 4 31B with both new provider keys
+on:
+  push:
+    branches: [experiment/final-paired-interview-2026-11-23]
+    paths: [.github/workflows/check-gemma4-new-keys.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  gemma-on-gemini-api:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY_2 }}
+    steps:
+      - name: One real Gemma 4 31B request through Gemini API
+        run: |
+          python - <<'PY'
+          import os, json, urllib.request, urllib.error
+          key = os.getenv("GEMINI_API_KEY", "").strip()
+          if not key:
+              print("GEMMA_GEMINI_API secret_missing")
+              raise SystemExit(1)
+          payload = json.dumps({
+              "contents": [{"parts": [{"text": "Reply with the single word READY."}]}],
+              "generationConfig": {"temperature": 0, "maxOutputTokens": 64}
+          }).encode()
+          request = urllib.request.Request(
+              "https://generativelanguage.googleapis.com/v1beta/models/gemma-4-31b-it:generateContent",
+              data=payload,method="POST",headers={
+                  "x-goog-api-key":key,"Content-Type":"application/json"})
+          try:
+              with urllib.request.urlopen(request, timeout=45) as response:
+                  data = json.load(response)
+                  valid = any(c.get("content", {}).get("parts")
+                              for c in data.get("candidates", []))
+                  print("GEMMA_GEMINI_API http_status",response.status,
+                        "model_responded",valid)
+                  raise SystemExit(0 if valid else 1)
+          except urllib.error.HTTPError as e:
+              print("GEMMA_GEMINI_API provider_refused_http_status",e.code)
+              raise SystemExit(1)
+          except (urllib.error.URLError,TimeoutError,ValueError,OSError) as e:
+              print("GEMMA_GEMINI_API request_failed",type(e).__name__)
+              raise SystemExit(1)
+          PY
+  gemma-on-openrouter2:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      COMPATIBLE_API_KEY: ${{ secrets.OPENROUTER2 }}
+    steps:
+      - name: One real Gemma 4 31B request through OpenRouter2
+        run: |
+          python - <<'PY'
+          import os,json,urllib.request,urllib.error
+          key=os.getenv("COMPATIBLE_API_KEY","").strip()
+          if not key:
+              print("GEMMA_OPENROUTER2 secret_missing")
+              raise SystemExit(1)
+          data=json.dumps({
+              "model":"google/gemma-4-31b-it",
+              "messages":[{"role":"user","content":"Reply with the single word READY."}],
+              "temperature":0,"max_tokens":64
+          }).encode()
+          request=urllib.request.Request(
+              "https://openrouter.ai/api/v1/chat/completions",
+              data=data,method="POST",headers={
+                  "Authorization":"Bearer "+key,
+                  "Content-Type":"application/json"})
+          try:
+              with urllib.request.urlopen(request, timeout=45) as response:
+                  answer=json.load(response)
+                  valid=bool(answer.get("choices"))
+                  print("GEMMA_OPENROUTER2 http_status",response.status,
+                        "model_responded",valid)
+                  raise SystemExit(0 if valid else 1)
+          except urllib.error.HTTPError as e:
+              print("GEMMA_OPENROUTER2 provider_refused_http_status",e.code)
+              raise SystemExit(1)
+          except (urllib.error.URLError,TimeoutError,ValueError,OSError) as e:
+              print("GEMMA_OPENROUTER2 request_failed",type(e).__name__)
+              raise SystemExit(1)
+          PY
