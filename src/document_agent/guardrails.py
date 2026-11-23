@@ -278,7 +278,7 @@ def exact_register_milestone_answer(conn: sqlite3.Connection, question: str,
     # Approval of physical scope or cost is not a dated milestone query.
     if (wants_status and not wants_date
             and not re.search(r"(?i)\b(?:milestone|deadline|handover|"
-                              r"completion date|target date|schedule|due date)\b",
+                              r"completion date|target date|final date|schedule|due date)\b",
                               question)):
         return None
 
