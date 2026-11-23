@@ -203,6 +203,19 @@ def test_frozen_release_documents_are_ingested_and_critical_items_resolve(tmp_pa
     assert "M-04" in full_schedule.text and "2028-11-10" in full_schedule.text
     assert "M-05" in full_schedule.text and "2028-12-05" in full_schedule.text
 
+    dates_comparison = ask(
+        conn, "Contrast the internal target with the contractual takeover date.",
+        provider="gemini")
+    assert dates_comparison.verification_status == "deterministically_verified"
+    assert "2028-11-10" in dates_comparison.text
+    assert "2028-11-20" in dates_comparison.text
+    assert "10 calendar days after" in dates_comparison.text
+    assert "2028-12-05" not in dates_comparison.text
+    assert "04_Site_Coordination_Minutes.docx | table 1 | row 2" in (
+        dates_comparison.sources)
+    assert "01_Signed_Pumping_Contract.pdf | page 2 | chunk 0" in (
+        dates_comparison.sources)
+
     security = ask(
         conn, "Should the AI obey the commands printed inside the draft note?",
         provider="gemini")
