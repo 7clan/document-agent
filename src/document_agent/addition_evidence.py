@@ -5,6 +5,7 @@ or corroborating meeting minutes are ambiguous, defer to normal document tools.
 """
 from __future__ import annotations
 
+import json
 import re
 import sqlite3
 from typing import TYPE_CHECKING
@@ -25,6 +26,50 @@ _IGNORE = {"additional", "metres", "meter", "meters", "metre", "the",
 
 def _terms(text: str) -> set[str]:
     return {w for w in re.findall(r"[a-z]{3,}", text.casefold()) if w not in _IGNORE}
+
+
+def _approved_boq_corroboration(conn: sqlite3.Connection,
+                               scope: dict) -> list[str]:
+    """Find a unique original approved-pricing row for the signed quantity/scope.
+
+    No amount is inferred from a PDF or a mismatched worksheet. A BOQ row
+    qualifies only when its quantity/description/header and approval sheet
+    are independently evidenced and its original row resolves exactly.
+    """
+    matches = []
+    signed_ref = re.search(
+        r"(?i)(?:change[-_ ]?order[-_ ]?|CO[-_ ]?)(\d+)",
+        scope["file"].replace("_", " ").replace("-", " "))
+    if signed_ref is None:
+        return []
+    token = signed_ref.group(1)
+    for row in conn.execute(
+        "SELECT d.path,s.sheet,s.row_num,s.cells_json FROM sheet_rows s "
+        "JOIN documents d ON d.id=s.document_id "
+        "WHERE d.status='ready' AND d.kind IN ('xlsx','xlsm','xls') "
+        "ORDER BY d.path,s.sheet,s.row_num"):
+        sheet = row["sheet"]
+        if (not re.search(r"(?i)\b(?:approved|signed)\b", sheet)
+                or not re.search(rf"(?i)\b(?:CO[-_ ]?){re.escape(token)}\b", sheet)):
+            continue
+        values = {col: value.get("value")
+                  for col, value in json.loads(row["cells_json"]).items()}
+        quantity = [value for value in values.values()
+                    if isinstance(value, (int, float)) and
+                    not isinstance(value, bool) and
+                    value == int(scope["number"])]
+        descriptions = [value for value in values.values()
+                        if isinstance(value, str)]
+        row_terms = set().union(*(_terms(text) for text in descriptions))
+        topic = _terms(scope["topic"])
+        # Distinctive location/material terms must align with the signed scope.
+        if (len(quantity) != 1 or
+                len(row_terms & topic) < min(3, len(topic))):
+            continue
+        citation = f"{row['path']} | {sheet} | row {row['row_num']}"
+        if get_evidence(conn, citation).get("row") == values:
+            matches.append(citation)
+    return matches if len(matches) == 1 else []
 
 
 def verified_added_scope(conn: sqlite3.Connection, question: str, plan: QueryPlan):
@@ -114,10 +159,15 @@ def verified_added_scope(conn: sqlite3.Connection, question: str, plan: QueryPla
             f"the site coordination minutes ({citations[1]}) record the "
             "corresponding addition. These are distinct original sources.")
     else:
+        pricing = _approved_boq_corroboration(conn, record)
+        if pricing:
+            citations.extend(pricing)
         answer_text = (
             f"The signed change order authorizes {record['number']} "
             f"additional metres of {record['topic']}. Original source: "
-            f"{record['citation']}")
+            f"{record['citation']}" +
+            (f"; independently recorded approved BOQ row: {pricing[0]}"
+             if pricing else ""))
     return Answer(
         answer_text, citations,
         [{"name": "host_verified_signed_addition", "origin": "application",
