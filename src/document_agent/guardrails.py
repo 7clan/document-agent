@@ -271,8 +271,27 @@ def exact_register_milestone_answer(conn: sqlite3.Connection, question: str,
             f"{identifiers[0].upper()} is dated {date_text}, but its approval "
             f"and contractual status are not recorded. — {citation}",
             [citation], trace, verification_status="unverified")
-    lines = [f"{identifiers[0].upper()} ({description or 'milestone'}) "
-             f"is dated {date_text} in the indexed register."]
+    lines: list[str] = []
+    binding = bool(re.search(r"(?i)\\b(?:binding|contractual deadline)\\b", question))
+    approved = bool(re.search(r"(?i)\\b(?:approved|approval)\\b", question))
+    if binding:
+        if (classification.casefold() == "contractual"
+                and approval.casefold() in {"signed contract", "approved", "signed"}):
+            lines.append("Yes, this register identifies it as contractual.")
+        elif (classification.casefold() in {"planning", "proposal", "internal"}
+              or approval.casefold() in {"internal only", "not approved", "pending"}):
+            lines.append("No, this register does not identify it as a binding deadline.")
+        else:
+            lines.append("The register alone does not establish whether it is binding.")
+    elif approved:
+        if approval.casefold() in {"not approved", "pending", "internal only"}:
+            lines.append("No, the milestone is not recorded as approved.")
+        elif approval.casefold() in {"approved", "signed", "signed contract"}:
+            lines.append("Yes, the milestone is recorded as approved in this register.")
+        else:
+            lines.append("The register does not establish approval.")
+    lines.append(f"{identifiers[0].upper()} ({description or 'milestone'}) "
+                 f"is dated {date_text} in the indexed register.")
     if classification:
         lines.append(f"Register classification: {classification}.")
     if approval:
