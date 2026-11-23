@@ -110,6 +110,77 @@ def verified_base_subtotal(conn: sqlite3.Connection, question: str, plan: QueryP
                               "sheet": sheet, "line_count": len(detail_citations)})
 
 
+def original_contract_subtotal_comparison(
+        conn: sqlite3.Connection, question: str, plan: QueryPlan):
+    """Compare two authenticated operands, never infer missing contract values."""
+    if (plan.scope_kind == "mixed"
+            or not re.search(r"(?i)\b(?:equal|same)\b", question)
+            or not re.search(r"(?i)\boriginal\b", question)
+            or not re.search(r"(?i)\bcontract\b", question)
+            or not re.search(r"(?i)\bbase\b", question)
+            or not re.search(r"(?i)\bsubtotal\b", question)
+            or re.search(r"(?i)\b(?:revised|amended|post[- ]change)\b", question)):
+        return None
+    from .agent import Answer
+
+    local = verified_base_subtotal(conn, "What is the base subtotal?", plan)
+    if local is None:
+        return None
+    trace = _trace("host_original_contract_comparison")
+    if local.verification_status != "deterministically_verified":
+        return Answer(
+            "The base subtotal could not be independently reconciled. No "
+            "contract-price comparison is asserted.", [], trace,
+            verification_status="unverified")
+    base = Decimal(local.structured["subtotal"])
+    currency = local.structured["currency"]
+    original = re.compile(
+        r"(?i)\boriginal\b[^.!?\n]{0,70}?\bcontract\s+"
+        r"(?:price|sum|amount|value)\b[^.!?\n]{0,35}?"
+        r"\b(SAR|AED|USD|EUR|GBP)\s*([\d,]+(?:\.\d+)?)")
+    candidates = []
+    for row in conn.execute(
+        "SELECT d.path,p.page,p.chunk,p.text FROM passages p "
+        "JOIN documents d ON d.id=p.document_id "
+        "WHERE d.status='ready' AND d.kind='pdf' ORDER BY d.path,p.page,p.chunk"
+    ):
+        if not re.search(r"(?i)contract", row["path"]):
+            continue
+        if re.search(r"(?i)\b(?:change[-_ ]order|draft|proposal|pending)\b",
+                     row["path"].replace("_", " ")):
+            continue
+        source = f"{row['path']} | page {row['page']} | chunk {row['chunk']}"
+        if get_evidence(conn, source).get("text") != row["text"]:
+            continue
+        for match in original.finditer(row["text"]):
+            amount = _num(match.group(2))
+            if amount is not None and amount.is_finite():
+                candidates.append((match.group(1).upper(), amount, source))
+    distinct = {(c, value) for c, value, _ in candidates}
+    if len(distinct) != 1:
+        return Answer(
+            "The original contract amount is not uniquely established in "
+            "the indexed signed contract passages. No comparison is inferred.",
+            local.sources, trace, verification_status="unverified")
+    contract_currency, signed = next(iter(distinct))
+    sources = list(dict.fromkeys([*local.sources, *(c[2] for c in candidates)]))
+    if contract_currency != currency:
+        return Answer(
+            f"Cannot directly compare {currency} base subtotal with "
+            f"{contract_currency} signed contract price without a conversion basis.",
+            sources, trace, verification_status="unverified")
+    equal = signed == base
+    return Answer(
+        f"{'Yes' if equal else 'No'}. The selected base subtotal is "
+        f"{currency} {base:,.0f}, while the original signed contract price "
+        f"is {currency} {signed:,.0f}. Difference: "
+        f"{currency} {abs(signed - base):,.0f}. "
+        "The subtotal covers the selected worksheet only, not the entire contract.",
+        sources, trace, verification_status="deterministically_verified",
+        structured={"base_subtotal": str(base), "original_contract": str(signed),
+                    "difference": str(abs(signed - base)), "currency": currency})
+
+
 def complete_milestone_schedule(conn: sqlite3.Connection, question: str,
                                 plan: QueryPlan):
     """Separate complete unique register rows by their *recorded* status only."""
