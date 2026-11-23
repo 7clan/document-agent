@@ -1,4 +1,4 @@
-name: Check refreshed private API keys (one small request per provider)
+name: Verify GEMINI_API_KEY_2 and OPENROUTER2 (one live request each)
 
 on:
   push:
@@ -15,8 +15,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 4
     env:
-      # Same aliases used by the full interview: values never printed.
-      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      # Explicit newly added secrets. Never print credential values.
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY_2 }}
     steps:
       - uses: actions/setup-python@v5
         with:
@@ -58,7 +58,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 4
     env:
-      COMPATIBLE_API_KEY: ${{ secrets.OPENROUTER_API_KEY || secrets.OPEN_ROUTER_API_KEY || secrets.OPENROUTER_KEY || secrets.OPENROUTER }}
+      COMPATIBLE_API_KEY: ${{ secrets.OPENROUTER2 }}
     steps:
       - uses: actions/setup-python@v5
         with:
