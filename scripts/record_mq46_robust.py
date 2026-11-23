@@ -271,8 +271,9 @@ def main() -> int:
                                 }""",
                                 arg=previous_answer, timeout=22000,
                             )
-                        except Exception:  # noqa: BLE001 - UI may omit answer markup briefly
-                            pass  # The retry loop handles missing visible answers.
+                        except Exception as exc:  # noqa: BLE001 - transient UI state
+                            print("ANSWER_RENDER_WAIT_TIMEOUT", args.engine_ref,
+                                  case["id"], type(exc).__name__, flush=True)
                     observation = page.evaluate(JS_READ_RESULT)
                     retries = 0
                     while retries < 3:
@@ -338,8 +339,10 @@ def main() -> int:
                                     }""",
                                     arg=previous_answer, timeout=22000,
                                 )
-                            except Exception:  # noqa: BLE001 - UI state is transient
-                                pass
+                            except Exception as exc:  # noqa: BLE001 - transient UI state
+                                print("ANSWER_RENDER_RETRY_WAIT_TIMEOUT",
+                                      args.engine_ref, case["id"],
+                                      type(exc).__name__, flush=True)
                         page.wait_for_timeout(450)
                         observation = page.evaluate(JS_READ_RESULT)
                         retries += 1
