@@ -2915,4 +2915,27 @@ def ask(conn: sqlite3.Connection, question: str, max_rounds: int = 8,
         if (plan.incomplete_blocks_certainty and
                 answer.verification_status == "deterministically_verified"):
             answer.verification_status = "evidence_linked"
+    # Explicit opt-in: semantic verification makes an additional provider call.
+    # Only source-linked model claims are eligible; deterministic answers are intact.
+    if (answer.verification_status == "evidence_linked" and answer.claims
+            and os.getenv("DOCUMENT_AGENT_SEMANTIC_VERIFY", "0").casefold()
+            in {"1", "true", "yes", "on"}):
+        try:
+            from .semantic_review_runtime import make_provider_judge, review_answer
+
+            judge_provider = os.getenv(
+                "DOCUMENT_AGENT_SEMANTIC_PROVIDER", chosen_provider,
+            ).strip().lower()
+            configured_model = os.getenv("DOCUMENT_AGENT_SEMANTIC_MODEL", "").strip()
+            judge_model = (configured_model or
+                           (model if judge_provider == chosen_provider else None))
+            answer = review_answer(
+                conn, question, answer,
+                make_provider_judge(judge_provider, judge_model),
+            )
+        except Exception as exc:  # noqa: BLE001 - never reject a valid answer on outage
+            answer.tool_calls.append({
+                "name": "semantic_verification", "origin": "application",
+                "ok": False, "reason": "Judge unavailable: " + type(exc).__name__,
+            })
     return answer
