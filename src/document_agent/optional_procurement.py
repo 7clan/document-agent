@@ -106,7 +106,11 @@ def verified_optional_procurement(conn: sqlite3.Connection, question: str,
     pending = []
     for text, citation in pending_requests:
         overlap = _words(text) & keyword_terms
-        if (len(overlap) >= min(2, len(keyword_terms))
+        phase = re.search(r"(?i)\bphase\s+(\d+)\b", topic)
+        same_phase = bool(phase and re.search(
+            rf"(?i)\bphase\s+{re.escape(phase.group(1))}\b", text))
+        if ((len(overlap) >= min(2, len(keyword_terms))
+             or (same_phase and len(overlap) >= 1))
                 and re.search(r"(?i)\b(?:procurement|purchase|order)\b", text)
                 and re.search(r"(?i)\b(?:remains\s+open|not\s+approved|pending)\b",
                               text)):
