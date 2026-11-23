@@ -260,7 +260,7 @@ def main() -> int:
                         if observation["provider_http_status"] == 429:
                             body = page.locator("body").inner_text()
                             match = re.search(
-                                r"(?i)retry in approximately (\\d+) seconds", body)
+                                r"(?i)retry in approximately (\d+) seconds", body)
                             observed_delay = int(match.group(1)) if match else 65
                             delay_seconds = min(150, max(20, observed_delay + 12))
                             print("MODEL_RATE_LIMIT_429", args.engine_ref,
