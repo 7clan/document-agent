@@ -187,6 +187,54 @@ passed **350 tests**, Ruff, and retrieval checks on the new source guards.
 also passed **350 tests** and `pip check` on the same branch.
 No OpenRouter or Gemini inference costs were incurred by these changes.
 
+## Second targeted reliability pass — 23 November 2026
+
+Review of the archived Gemini/Gemma answer artifacts found that correct facts
+could still be returned without citations, and that date comparisons sometimes
+confused **internal readiness** with a **separate unapproved proposal**. The
+following *general source-verified capabilities*, not fixture answer tables,
+were added in `src/document_agent/structured_reporting.py`:
+
+- **Reconciled base subtotal:** Identifies a unique signed/base worksheet,
+  verifies each priced amount against its original source cell and matches
+  the exact total against one independently authenticated subtotal cell.
+  It excludes change-order sheets, rejects incomplete rows and inconsistent
+  currencies, and declines to assert an unreconciled subtotal.
+- **Original contract comparison:** Extracts the *original*, not revised,
+  contract amount from an authenticated signed-contract PDF passage. Compares
+  it to the complete reconciled BOQ using `Decimal`, requires the same currency,
+  and refuses ambiguity or missing original evidence.
+- **Complete contractual/planning/proposal register:** Inspects the whole
+  uniquely identified milestone register, checks each original row and calendar
+  date, ensures distinct milestone identifiers, then reports the recorded
+  categories with source citations. It does not claim a proposal has become
+  a signed contract change.
+- **Planning versus handover contrast:** Selects uniquely identified internal
+  readiness and contractual handover milestones; checks original source
+  locations, independently links coordination minutes and the signed
+  contract when present, computes the calendar-day difference, and
+  never substitutes a later unapproved proposal for the internal forecast.
+
+Regression tests cover the *real ingested nine-file corpus*, invalid dates,
+duplicate milestone IDs, missing subtotals, original-source reconciliation
+and incompatible source scopes.
+
+[Measured offline 44-case replay](https://github.com/7clan/document-agent/actions/runs/45090153292):
+**19/44 directly host-answered**, **11/15 critical handled**,
+**17 answers with independently resolving original source locations**,
+**two cautious evidence-absence refusals** and **25 questions requiring an
+external model**. Compared with 15/44 and 8/15 critical from the previous pass,
+this adds **four** safe host-resolved questions and **three** critical cases.
+All tested answers retained their original document provenance; the entire
+44-case evaluation used **zero LLM API calls**.
+
+[Latest offline Linux checks](https://github.com/7clan/document-agent/actions/runs/45090184905):
+**353 passing tests**, Ruff and retrieval checks. These are deterministic
+grounding and test results. **The full end-to-end model accuracy has not
+been remeasured** and should never be conflated with 19/44 host coverage or
+92.5% hybrid source Hit@5. Provider quota/billing previously blocked that
+separate live-model acceptance test.
+
 ## Merge decision
 
 **NOT MERGED; DRAFT.** Security, Linux and Windows CI, real hybrid retrieval,
