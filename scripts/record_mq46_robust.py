@@ -271,7 +271,7 @@ def main() -> int:
                                 }""",
                                 arg=previous_answer, timeout=22000,
                             )
-                        except Exception:
+                        except Exception:  # noqa: BLE001 - UI may omit answer markup briefly
                             pass  # The retry loop handles missing visible answers.
                     observation = page.evaluate(JS_READ_RESULT)
                     retries = 0
@@ -338,7 +338,7 @@ def main() -> int:
                                     }""",
                                     arg=previous_answer, timeout=22000,
                                 )
-                            except Exception:
+                            except Exception:  # noqa: BLE001 - UI state is transient
                                 pass
                         page.wait_for_timeout(450)
                         observation = page.evaluate(JS_READ_RESULT)
