@@ -138,6 +138,53 @@ benchmarks cannot run simultaneously. The benchmark itself stops on its first
 HTTP 402 or two consecutive HTTP 429 responses, minimizing unnecessary calls.
 Do not trigger a new paid test without first establishing usable account quota.
 
+## Targeted local reliability hardening — 23 November 2026
+
+A close review of the **original model answer artifacts**, not a substitute
+model, found repeatable gaps in three categories: similar financial item IDs,
+milestone dates/statuses that models occasionally returned without citations,
+and an untrusted draft note containing instructions directed at the AI.
+We addressed these at the **application layer**, using exact indexed sources:
+
+1. **Exact pairwise priced-item comparison** resolves two distinct whole IDs
+   (including prefix traps like `HP-103` vs `HP-1030`), checks each amount
+   against its original source cell, refuses ambiguous duplicate IDs, and
+   never subtracts amounts from different currencies. If evidence is missing,
+   it abstains rather than fabricating a numerical difference.
+2. **Exact single-milestone register lookup** identifies date, classification,
+   and approval directly from an indexed Excel register row. It distinguishes
+   contractual dates from planning and unapproved proposals. A signed original
+   milestone cannot be mistaken for approval of a *new contractual deadline*.
+   Conflicting duplicate milestones or unsupported status values are withheld.
+3. **Document instruction trust boundary** recognizes a narrow question about
+   whether the AI should obey instructions printed inside a PDF. It answers
+   "No", authenticates the indexed malicious-source location when present,
+   and never follows or forwards the embedded commands.
+4. **Explicit unique-sheet financial filters** (e.g., list/total *all*
+   named-sheet items above a stated currency threshold) call the existing
+   Python spreadsheet query directly, verifying every returned amount cell.
+   Ambiguous worksheet names or cross-contract comparisons keep the
+   normal provider/clarification path.
+
+These guards are **generic source/schema checks**, not prewritten fixture
+answers, and their tests include source-record conflicts, duplicated IDs,
+different currencies, missing codes, ambiguous sheet names, and actual
+end-to-end ingestion of the fictional nine-file corpus.
+
+[Real offline 44-question host-routing benchmark](https://github.com/7clan/document-agent/actions/runs/45088426736):
+**15/44** questions were answered using indexed host logic, including
+**8/15 critical** cases; **13** had source locations independently
+re-resolved, and **two** were conservative, uncited refusals (a corrupt
+attachment and a nonexistent item). **29** still required a provider.
+**Zero model API calls** were made during this test.
+The earlier pre-hardening offline snapshot had 13 host-resolved cases.
+This is routing/grounding coverage, **not a claim of 15/44 factual accuracy
+or a completed post-fix LLM acceptance benchmark**.
+
+[Offline code CI](https://github.com/7clan/document-agent/actions/runs/45088426725)
+passed **350 tests**, Ruff, and retrieval checks on the new source guards.
+No OpenRouter or Gemini inference costs were incurred by these changes.
+
 ## Merge decision
 
 **NOT MERGED; DRAFT.** Security, Linux and Windows CI, real hybrid retrieval,
