@@ -70,7 +70,7 @@ def main() -> int:
         f"- Identical frozen question/document hashes and provider/model: **{hashes_equal}**",
         f"- Original main commit: `{a['engine_sha'] if a else 'no recording'}`",
         f"- Candidate commit: `{b['engine_sha'] if b else 'no recording'}`",
-        f"- Same provider: **{a['model'] if a else 'N/A'}** through OpenRouter.",
+        f"- Same model: **{a['model'] if a else 'N/A'}**, provider: **{a['provider'] if a else 'N/A'}**.",
         "- Unmodified original Streamlit apps; both sessions are uncut browser recordings.",
         ("- Model replies are **real**. Citation existence and labeled source recall "
          "do **not** imply factual correctness."),
