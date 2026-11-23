@@ -1,0 +1,192 @@
+name: BLIND AQ73 continuation | only provider-blocked Q13-18
+
+on:
+  push:
+    branches: [experiment/blind-holdout-main-vs-pr10-2026-11-23]
+    paths: [.github/workflows/blind-aq73-continuation.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: independent-blind-aq73-suffix-provider-recovery
+  cancel-in-progress: false
+
+jobs:
+  frozen-only-unanswered:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY_2 }}
+      GEMINI_MODEL: gemini-3.5-flash-lite
+      DOCUMENT_AGENT_RETRIEVAL_MODE: hybrid
+      DOCUMENT_AGENT_EMBEDDING_ALLOW_DOWNLOAD: '1'
+      DOCUMENT_AGENT_SEMANTIC_VERIFY: '0'
+      HF_HUB_DISABLE_TELEMETRY: '1'
+      OPENROUTER2: ${{ secrets.OPENROUTER2 }}
+    steps:
+      - uses: actions/checkout@v4
+        name: Checkout original main SHA unmodified
+        with:
+          ref: b4bfc744583060b5854184d7628fbd354e694771
+          path: main_engine
+      - uses: actions/checkout@v4
+        name: Checkout same PR10 SHA unmodified
+        with:
+          ref: 18a116c2b8077fb4aecb53e8274e4671cbf3f04e
+          path: pr10_engine
+      - uses: actions/checkout@v4
+        name: Checkout sealed blind continuation harness only
+        with:
+          ref: b9a0d70308ed74448c81426079f63dc15b61518d
+          path: holdout
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: minilm-l6-v2-huggingface-v1
+      - name: Rehydrate identical nine document bytes and original 24 answers
+        shell: bash
+        run: |
+          gh run download 45219507539 \
+            --repo 7clan/document-agent \
+            --name blind-AQ73-pinned-main-vs-PR10-original-answers-and-videos \
+            --dir sealed_original
+          python - <<'PY'
+          import hashlib,json
+          from pathlib import Path
+          root=Path('sealed_original')
+          files=json.loads((root/'aq73_corpus_sha256.json').read_text())
+          assert len(files)==9
+          for name,sha in files.items():
+              actual=hashlib.sha256((root/'shared_aq73'/name).read_bytes()).hexdigest()
+              assert actual==sha,(name,'original corpus changed')
+          qa=(root/'holdout/evaluation/blind_aquifer_questions.json').read_bytes()
+          new=Path('holdout/evaluation/blind_aquifer_questions.json').read_bytes()
+          assert qa==new,'Frozen question corpus was changed after initial test'
+          for side in ('main','pr10'):
+              report=json.loads((root/f'answers/{side}/browser_results.json').read_text())
+              assert report['document_hashes']==files
+              assert [x['id'] for x in report['cases'] if x.get('response_captured')]==list(range(1,13))
+              assert report['cases'][-1]['id']==13
+              assert report['cases'][-1]['provider_http_status']==503
+          print('BLIND_RESUME_REPLAY_EXACT_9_FILE_HASHES_AND_12_ORIGINAL_ANSWERS',flush=True)
+          PY
+      - name: Install actual UI, formats and headless Chromium
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e './holdout[dev,openai,embeddings]'
+          python -m pip install playwright
+          python -m playwright install --with-deps chromium
+          python -m py_compile holdout/scripts/record_blind_suffix.py \
+            holdout/scripts/merge_blind_aquifer_segments.py
+      - name: Record only original-main Q13–18 via same Gemini model and source bytes
+        shell: bash
+        run: |
+          set +e
+          PYTHONPATH="$PWD/main_engine/src" python holdout/scripts/record_blind_suffix.py \
+            --engine-root main_engine --engine-ref main \
+            --engine-sha b4bfc744583060b5854184d7628fbd354e694771 \
+            --corpus-root sealed_original/shared_aq73 --provider gemini \
+            --model "$GEMINI_MODEL" --from-id 13 --through-id 18 \
+            --output suffix/main --port 19251
+          echo "MAIN_SUFFIX_EXIT=$?" >> "$GITHUB_ENV"
+          exit 0
+      - name: Rest same provider quota between suffix interviews
+        run: sleep 120
+      - name: Record only PR10 Q13–18 with no implementation changes
+        shell: bash
+        run: |
+          set +e
+          PYTHONPATH="$PWD/pr10_engine/src" python holdout/scripts/record_blind_suffix.py \
+            --engine-root pr10_engine --engine-ref pr10 \
+            --engine-sha 18a116c2b8077fb4aecb53e8274e4671cbf3f04e \
+            --corpus-root sealed_original/shared_aq73 --provider gemini \
+            --model "$GEMINI_MODEL" --from-id 13 --through-id 18 \
+            --output suffix/pr10 --port 19252
+          echo "PR10_SUFFIX_EXIT=$?" >> "$GITHUB_ENV"
+          exit 0
+      - name: Merge only first actually completed answers and preserve two video segments
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          python holdout/scripts/merge_blind_aquifer_segments.py \
+            --rubric holdout/evaluation/blind_aquifer_questions.json \
+            --original-main sealed_original/answers/main/browser_results.json \
+            --original-pr10 sealed_original/answers/pr10/browser_results.json \
+            --suffix-main suffix/main/browser_results.json \
+            --suffix-pr10 suffix/pr10/browser_results.json \
+            --output combined
+          echo "MERGE_EXIT=$?" >> "$GITHUB_ENV"
+          exit 0
+      - name: Semantically review frozen 18 plus 18 answers with independent judge
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          if [ -s combined/main.json ] && [ -s combined/pr10.json ] && \
+             [ -n "$OPENROUTER2" ]; then
+            python holdout/scripts/blind_semantic_review.py \
+              --baseline combined/main.json --candidate combined/pr10.json \
+              --rubric holdout/evaluation/blind_aquifer_questions.json \
+              --output reviewed \
+              --judge-provider openrouter \
+              --judge-model google/gemma-4-31b-it
+            echo "REVIEW_EXIT=$?" >> "$GITHUB_ENV"
+          else
+            echo "UNAVAILABLE_COMBINED_INTERVIEW_OR_JUDGE_KEY"
+          fi
+          exit 0
+      - name: Preserve uncut continuation videos, combined verbatim reports, and scores
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: blind-AQ73-Q13-18-frozen-continution-and-combined-results
+          path: |
+            suffix/main/browser_results.json
+            suffix/main/full_uncut_interview.webm
+            suffix/main/full_uncut_interview.mp4
+            suffix/pr10/browser_results.json
+            suffix/pr10/full_uncut_interview.webm
+            suffix/pr10/full_uncut_interview.mp4
+            combined/
+            reviewed/
+          retention-days: 30
+          if-no-files-found: warn
+          compression-level: 0
+      - name: Do not announce a winner unless all 18 paired answers were actually captured
+        if: always()
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          paths=[Path('combined/main.json'),Path('combined/pr10.json')]
+          if any(not x.is_file() for x in paths):
+              raise SystemExit('BLIND_CONTINUATION_MISSING_NO_WINNER')
+          a,b=(json.loads(x.read_text()) for x in paths)
+          assert a['document_hashes']==b['document_hashes']
+          assert a['ground_truth_sha256']==b['ground_truth_sha256']
+          assert a['model']==b['model']=='gemini-3.5-flash-lite'
+          for r in (a,b):
+              print('BLIND_FINAL_CAPTURE',r['engine_ref'],r['summary'],flush=True)
+              print('TWO_SEPARATE_UNEDITED_RECORDING_SEGMENTS',r['recording_segments'])
+              if (r['summary']['completed_with_answer'] != 18
+                      or not r['recording_verified']):
+                  raise SystemExit('BLIND_INCOMPLETE_PROVIDER_FAILURE_NO_WINNER')
+          path=Path('reviewed/semantic_review.json')
+          if not path.is_file():
+              raise SystemExit('BLIND_JUDGE_UNAVAILABLE_NO_WINNER')
+          semantic=json.loads(path.read_text())
+          for side in ('main','candidate'):
+              summary=semantic['results'][side]['summary']
+              print('BLIND_SEMANTIC',side,summary,flush=True)
+              if summary['judged'] != 18:
+                  raise SystemExit('BLIND_SEMANTIC_INCOMPLETE_NO_WINNER')
+          print('FROZEN_BLIND_AQ73_FULL_18_PLUS_18_AND_36_JUDGMENTS_COMPLETE')
+          PY
