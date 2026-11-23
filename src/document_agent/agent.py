@@ -18,6 +18,7 @@ from dotenv import load_dotenv
 
 from .absence_guards import scoped_absence_answer
 from .addition_evidence import verified_added_scope
+from .optional_procurement import verified_optional_procurement
 from .claim_verifier import _explicit_files, parse_answer, question_parts, validate_claims
 from .guardrails import (
     document_instruction_safety_answer,
@@ -2832,6 +2833,8 @@ def ask(conn: sqlite3.Connection, question: str, max_rounds: int = 8,
         guarded = document_instruction_safety_answer(conn, question, plan)
     if guarded is None:
         guarded = untrusted_note_authorization_answer(conn, question, plan)
+    if guarded is None:
+        guarded = verified_optional_procurement(conn, question, plan)
     if guarded is None:
         guarded = verified_added_scope(conn, question, plan)
     if guarded is None:
