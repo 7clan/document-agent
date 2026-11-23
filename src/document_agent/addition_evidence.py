@@ -60,6 +60,12 @@ def _approved_boq_corroboration(conn: sqlite3.Connection,
                     value == int(scope["number"])]
         descriptions = [value for value in values.values()
                         if isinstance(value, str)]
+        # The priced row must actually name the same signed change-order ID,
+        # not merely share its quantity and installation location.
+        if not any(re.search(
+                rf"(?i)\bCO[-_ ]?{re.escape(token)}(?:[-_ ]|\b)", value)
+                for value in descriptions):
+            continue
         row_terms = set().union(*(_terms(text) for text in descriptions))
         topic = _terms(scope["topic"])
         # Distinctive location/material terms must align with the signed scope.
