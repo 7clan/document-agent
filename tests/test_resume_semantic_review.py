@@ -99,7 +99,7 @@ def test_one_rate_limit_can_recover_after_cooldown():
     result = resume(prior, rubric, first_limited, max_calls=4,
                     pause_seconds=0, sleeper=lambda sec: slept.append(sec))
     assert calls == [2, 2, 2]
-    assert slept == [50]
+    assert slept == [44]
     assert result["resume"]["new_completed_judgments"] == 2
 
 
@@ -109,3 +109,35 @@ def test_frozen_reference_change_is_rejected():
         verify_seed(prior, raw.replace(b"175 kW", b"180 kW"), prior["judge"])
     with pytest.raises(ValueError):
         verify_seed(prior, raw, "openrouter/some-other-model")
+
+
+def test_in_flight_402_retries_once_based_on_retry_after():
+    prior, _, rubric = seed()
+    sleeps = []
+    calls = []
+
+    class TransientBudget(Exception):
+        status_code = 402
+
+        def __init__(self):
+            self.response = type("Response", (), {
+                "headers": {"retry-after": "25"},
+                "json": lambda self: {"error": {"metadata": {
+                    "limit_source": "openrouter_in_flight_budget",
+                }}},
+            })()
+
+    def recovering_judge(item, answer):
+        calls.append(True)
+        if len(calls) == 1:
+            raise TransientBudget()
+        return {"label": "correct", "reason": "Equivalent"}
+
+    result = resume(prior, rubric, recovering_judge,
+                    pause_seconds=0, sleeper=sleeps.append)
+    assert len(calls) == 3
+    assert sleeps == [29]
+    assert result["resume"]["new_completed_judgments"] == 2
+    assert result["resume"]["errors"][0]["limit_source"] == (
+        "openrouter_in_flight_budget"
+    )
