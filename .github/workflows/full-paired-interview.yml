@@ -1,4 +1,4 @@
-name: Full 44-question paired LIVE interview with 429 cooldown (main vs newest)
+name: Full 44-question paired LIVE OpenRouter interview (main vs newest)
 
 on:
   push:
@@ -52,11 +52,11 @@ jobs:
         with:
           path: ~/.cache/huggingface
           key: minilm-l6-v2-huggingface-v1
-      - name: Check real private Gemini API credential for paced recording
+      - name: Check refreshed private OpenRouter API credential for paired recording
         shell: bash
         run: |
-          if [ -z "$GEMINI_API_KEY" ]; then
-            echo 'GEMINI_API_KEY secret missing: neither real model nor video can be claimed.'
+          if [ -z "$COMPATIBLE_API_KEY" ]; then
+            echo 'OPENROUTER secret missing: neither real model nor video can be claimed.'
             exit 1
           fi
           echo 'Provider credential present. Exact unchanged baseline and candidate commits pinned.'
@@ -79,12 +79,17 @@ jobs:
             --engine-ref main \
             --engine-sha b4bfc744583060b5854184d7628fbd354e694771 \
             --corpus-root shared-frozen-corpus \
-            --provider gemini --model "$GEMINI_MODEL" \
+            --provider compatible --model "$COMPATIBLE_MODEL" \
             --output recorded/main --port 18951
           result=$?
           echo "MAIN_BROWSER_EXIT=$result" >> "$GITHUB_ENV"
           echo "Unmodified main video exit status: $result"
           exit 0
+      - name: Allow OpenRouter in-flight budget to settle between version interviews
+        if: always()
+        run: |
+          echo 'Cooldown between original baseline and candidate calls; no model requests during pause.'
+          sleep 120
       - name: Record all 44 questions in real unmodified NEWEST app
         id: candidate
         shell: bash
@@ -95,7 +100,7 @@ jobs:
             --engine-ref feature/claim-evidence-hardening \
             --engine-sha 360a8afdb77710da56d5b06f2ae204f018c4a8fc \
             --corpus-root shared-frozen-corpus \
-            --provider gemini --model "$GEMINI_MODEL" \
+            --provider compatible --model "$COMPATIBLE_MODEL" \
             --output recorded/candidate --port 18952
           result=$?
           echo "CANDIDATE_BROWSER_EXIT=$result" >> "$GITHUB_ENV"
