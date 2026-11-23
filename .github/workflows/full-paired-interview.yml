@@ -1,4 +1,4 @@
-name: Full 44-question paired LIVE OpenRouter interview (main vs newest)
+name: Full 44-question paired LIVE OpenRouter2 interview (main vs newest)
 
 on:
   push:
@@ -22,8 +22,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 180
     env:
-      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-      COMPATIBLE_API_KEY: ${{ secrets.OPENROUTER_API_KEY || secrets.OPEN_ROUTER_API_KEY || secrets.OPENROUTER_KEY || secrets.OPENROUTER }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY_2 }}
+      COMPATIBLE_API_KEY: ${{ secrets.OPENROUTER2 }}
       COMPATIBLE_BASE_URL: https://openrouter.ai/api/v1
       COMPATIBLE_MODEL: nvidia/nemotron-3.5-lightning
       GEMINI_MODEL: gemini-2.5-flash
