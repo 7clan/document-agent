@@ -122,9 +122,9 @@ def main() -> int:
     headings.extend([
         "",
         "## Interpretation",
-        "The regex rubric tests prespecified facts and required source-document "
-        "coverage. It is not a substitute for human semantic entailment grading. "
-        "Provider failures and missing citations are never counted as correct.",
+        ("The regex rubric tests prespecified facts and required source-document "
+         "coverage. It is not a substitute for human semantic entailment grading. "
+         "Provider failures and missing citations are never counted as correct."),
         "Partial videos are not represented as complete interviews.",
         "",
         "## Original question-by-question examiner transcript",
