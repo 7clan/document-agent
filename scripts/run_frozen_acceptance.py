@@ -162,6 +162,8 @@ def main() -> int:
     parser.add_argument("--provider", choices=("gemini", "ollama_cloud", "compatible"), default="gemini")
     parser.add_argument("--mode", choices=("keyword", "hybrid"), default="keyword")
     parser.add_argument("--delay", type=float, default=1.5)
+    parser.add_argument("--corpus-root", type=Path, default=None,
+                        help="Use byte-identical external shared corpus without regenerating")
     parser.add_argument("--ids", default="", help="Optional comma-separated IDs for diagnosis")
     parser.add_argument("--resume", action="store_true", help="Continue a verified JSON checkpoint")
     args = parser.parse_args()
@@ -182,9 +184,13 @@ def main() -> int:
         if len(cases) != len(selected):
             parser.error("Unknown case ID")
     ground_truth_hash = hashlib.sha256(CASES.read_bytes()).hexdigest()
-    corpus = args.output / "fictional_corpus"
-    subprocess.run([sys.executable, str(ROOT / "scripts" / "create_release_corpus.py"),
-                    "--output", str(corpus)], check=True, cwd=ROOT)
+    corpus = (args.corpus_root.resolve() if args.corpus_root is not None
+              else args.output / "fictional_corpus")
+    if args.corpus_root is None:
+        subprocess.run([sys.executable, str(ROOT / "scripts" / "create_release_corpus.py"),
+                        "--output", str(corpus)], check=True, cwd=ROOT)
+    elif not corpus.is_dir():
+        parser.error("--corpus-root must be an existing indexed-document folder")
     hashes = {
         name: {
             "actual": hashlib.sha256((corpus / name).read_bytes()).hexdigest(),
@@ -204,6 +210,8 @@ def main() -> int:
         report = {
             "created_utc": datetime.now(UTC).isoformat(),
             "provider": args.provider,
+            "engine_ref": os.getenv("COMPARISON_ENGINE_REF", "unspecified"),
+            "engine_sha": os.getenv("COMPARISON_ENGINE_SHA", "unspecified"),
             "model": os.environ.get({
                 "gemini": "GEMINI_MODEL", "ollama_cloud": "OLLAMA_MODEL",
                 "compatible": "COMPATIBLE_MODEL",
