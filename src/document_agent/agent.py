@@ -17,7 +17,12 @@ from typing import Any
 from dotenv import load_dotenv
 
 from .claim_verifier import _explicit_files, parse_answer, question_parts, validate_claims
-from .guardrails import exact_item_answer, unreadable_attachment_answer
+from .guardrails import (
+    exact_item_answer,
+    exact_register_milestone_answer,
+    two_item_comparison_answer,
+    unreadable_attachment_answer,
+)
 from .query_plan import plan_question
 from .recovery import recover_answer
 from .retrieval_ids import requested_references
@@ -2777,6 +2782,10 @@ def ask(conn: sqlite3.Connection, question: str, max_rounds: int = 8,
     # Application-owned scope decisions precede any LLM request. A request about
     # one exact BOQ identifier must not degrade into an unrelated broad total.
     guarded = unreadable_attachment_answer(conn, question, plan)
+    if guarded is None:
+        guarded = two_item_comparison_answer(conn, question, plan)
+    if guarded is None:
+        guarded = exact_register_milestone_answer(conn, question, plan)
     if guarded is None:
         guarded = exact_item_answer(conn, question, plan)
     if guarded is not None:
