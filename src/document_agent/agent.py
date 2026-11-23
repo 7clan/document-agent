@@ -2764,6 +2764,36 @@ def _recover_with_compact_evidence(conn: sqlite3.Connection, question: str,
     return _source_linked_answer(conn, text, included, trace, question)
 
 
+def _host_explicit_sheet_financial_filter(
+    conn: sqlite3.Connection, question: str, plan: Any,
+) -> Answer | None:
+    """Answer only an explicitly named, uniquely indexed worksheet filter.
+
+    Generic requests across multiple tables, contract-price comparisons,
+    and unsupported amount scopes still use the full provider-backed agent.
+    """
+    if (plan.scope_kind == "mixed"
+            or not _needs_numeric_query(question)
+            or not re.search(r"(?i)\b(?:list|total|sum)\s+(?:all|every)\b", question)
+            or re.search(r"(?i)\b(?:contract|change order|revised|"
+                         r"compare|versus|across documents)\b", question)):
+        return None
+    args = _infer_sheet_scope(conn, question, {})
+    if not args.get("file") or not args.get("sheet"):
+        return None
+    trace = [{
+        "name": "host_explicit_sheet_filter",
+        "origin": "application", "ok": True,
+        "file": args["file"], "sheet": args["sheet"],
+    }]
+    answer = _verified_numeric_answer(conn, question, args, trace)
+    if not answer.sources and answer.verification_status == "deterministically_verified":
+        answer.verification_status = "unverified"
+        answer.text += ("\nNo independently verified matching amount cells "
+                        "were available in the scoped worksheet.")
+    return answer
+
+
 def ask(conn: sqlite3.Connection, question: str, max_rounds: int = 8,
         *, provider: str | None = None, model: str | None = None) -> Answer:
     if not question.strip():
@@ -2791,6 +2821,8 @@ def ask(conn: sqlite3.Connection, question: str, max_rounds: int = 8,
         guarded = exact_register_milestone_answer(conn, question, plan)
     if guarded is None:
         guarded = exact_item_answer(conn, question, plan)
+    if guarded is None:
+        guarded = _host_explicit_sheet_financial_filter(conn, question, plan)
     if guarded is not None:
         guarded.tool_calls.insert(0, plan.audit())
         return guarded
