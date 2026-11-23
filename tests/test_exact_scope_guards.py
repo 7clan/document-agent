@@ -296,6 +296,13 @@ def test_milestone_exact_date_and_status_citations_need_no_provider(monkeypatch)
     assert "Not approved" in pending.text
     assert pending.sources == ["Milestones.xlsx | Milestone Register | row 6"]
     assert pending.verification_status == "deterministically_verified"
+
+    # A signed original date is not proof of an approved *new* final date.
+    not_amendment = ask(
+        conn, "Was M-03 approved as a new final date?", provider="gemini")
+    assert "does not independently establish approval" in not_amendment.text
+    assert not not_amendment.text.startswith("Yes")
+    assert not_amendment.verification_status == "unverified"
     conn.close()
 
 
