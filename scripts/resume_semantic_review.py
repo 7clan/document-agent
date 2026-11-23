@@ -174,7 +174,7 @@ def write_report(seed: dict, output: Path) -> None:
         f"Judge: `{seed['judge']}`\n\n"
         f"Old main: `{json.dumps(summary['main'])}`\n\n"
         f"PR #9: `{json.dumps(summary['candidate'])}`\n\n"
-        f"Resume metadata: `{json.dumps(seed['resume'])}`\n\n"
+        f"Resume metadata: `{json.dumps(seed.get('resume', {'status': 'in_progress'}))}`\n\n"
         "Correctness among judged cases excludes unavailable quota cases. "
         "These model judgments are provisional and need spot audits.\n",
         encoding="utf-8",
