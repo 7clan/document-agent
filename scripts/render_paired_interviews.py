@@ -68,8 +68,8 @@ def main() -> int:
         "## Provenance and fair comparison",
         "",
         f"- Identical frozen question/document hashes and provider/model: **{hashes_equal}**",
-        f"- Original main commit: \`{a['engine_sha'] if a else 'no recording'}\`",
-        f"- Candidate commit: \`{b['engine_sha'] if b else 'no recording'}\`",
+        f"- Original main commit: `{a['engine_sha'] if a else 'no recording'}`",
+        f"- Candidate commit: `{b['engine_sha'] if b else 'no recording'}`",
         f"- Same provider: **{a['model'] if a else 'N/A'}** through OpenRouter.",
         "- Unmodified original Streamlit apps; both sessions are uncut browser recordings.",
         "- Model replies are **real**. Citation existence and labeled source recall "
@@ -97,10 +97,10 @@ def main() -> int:
     lines.extend([
         "", "## Evidence videos",
         "",
-        "- \`main/full_uncut_interview.webm\` (and MP4, if encoding succeeded)",
-        "- \`candidate/full_uncut_interview.webm\` (and MP4, if encoding succeeded)",
+        "- `main/full_uncut_interview.webm` (and MP4, if encoding succeeded)",
+        "- `candidate/full_uncut_interview.webm` (and MP4, if encoding succeeded)",
         "- Original per-question source citations and displayed answers are in "
-        "\`main/browser_results.json\` and \`candidate/browser_results.json\`.",
+        "`main/browser_results.json` and `candidate/browser_results.json`.",
         "",
         "## Full-answer correctness requires reading the actual answers",
         "",
