@@ -1,0 +1,162 @@
+name: Unseen MQ-46 live Groq interview - pinned main vs PR9, both uncut videos
+
+on:
+  push:
+    branches: [experiment/groq-unseen-interview-2026-11-23]
+    paths:
+      - .github/workflows/unseen-groq-final-interview.yml
+      - scripts/create_unseen_coldchain_corpus.py
+      - scripts/record_unseen_interview.py
+      - scripts/score_unseen_interview.py
+      - evaluation/unseen_coldchain_interview.json
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fresh-groq-mq46-paired-interview
+  cancel-in-progress: true
+
+jobs:
+  real-unseen-interview:
+    runs-on: ubuntu-latest
+    timeout-minutes: 165
+    env:
+      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY || secrets.GROQ_API || secrets.GROQ_KEY || secrets.GROQ }}
+      GROQ_BASE_URL: https://api.groq.com/openai/v1
+      GROQ_MODEL: openai/gpt-oss-20b
+      LLM_PROVIDER: groq
+      DOCUMENT_AGENT_RETRIEVAL_MODE: hybrid
+      DOCUMENT_AGENT_EMBEDDING_ALLOW_DOWNLOAD: '1'
+      HF_HUB_DISABLE_TELEMETRY: '1'
+    steps:
+      - name: Checkout untouched original main commit
+        uses: actions/checkout@v4
+        with:
+          ref: b4bfc744583060b5854184d7628fbd354e694771
+          path: old_main
+      - name: Checkout untouched latest PR9 candidate commit
+        uses: actions/checkout@v4
+        with:
+          ref: 360a8afdb77710da56d5b06f2ae204f018c4a8fc
+          path: candidate
+      - name: Checkout independent unseen interview generator, recorder and fixed rubric
+        uses: actions/checkout@v4
+        with:
+          path: harness
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: minilm-l6-v2-huggingface-v1
+      - name: Install test tools and real Chromium
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e './harness[dev,openai,embeddings]'
+          python -m pip install playwright
+          python -m playwright install --with-deps chromium
+      - name: Verify harness syntax, original key and frozen question count
+        shell: bash
+        run: |
+          test -n "$GROQ_API_KEY"
+          python -m py_compile harness/scripts/create_unseen_coldchain_corpus.py \
+            harness/scripts/record_unseen_interview.py \
+            harness/scripts/score_unseen_interview.py
+          python - <<'PY'
+          import json
+          data=json.load(open('harness/evaluation/unseen_coldchain_interview.json'))
+          assert len(data['questions'])==18
+          assert len({q['id'] for q in data['questions']})==18
+          print('FRESH_INTERVIEW_FROZEN',len(data['questions']),'separate questions')
+          PY
+      - name: Generate one brand-new fictional 9-document MQ-46 dataset
+        run: python harness/scripts/create_unseen_coldchain_corpus.py --output shared_unseen_mq46
+      - name: Film original main Streamlit answering every fresh question
+        shell: bash
+        run: |
+          set +e
+          PYTHONPATH="$PWD/old_main/src" python harness/scripts/record_unseen_interview.py \
+            --engine-root old_main --engine-ref main \
+            --engine-sha b4bfc744583060b5854184d7628fbd354e694771 \
+            --corpus-root shared_unseen_mq46 --provider groq \
+            --model "$GROQ_MODEL" --output records/main --port 19051
+          result=$?
+          echo "ORIGINAL_RECORDER_EXIT=$result" >> "$GITHUB_ENV"
+          echo "Original recording exit: $result"
+          exit 0
+      - name: Cool down Groq token budget before independent candidate interview
+        if: always()
+        run: sleep 90
+      - name: Film candidate PR9 Streamlit answering same fresh questions
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          PYTHONPATH="$PWD/candidate/src" python harness/scripts/record_unseen_interview.py \
+            --engine-root candidate --engine-ref feature/claim-evidence-hardening \
+            --engine-sha 360a8afdb77710da56d5b06f2ae204f018c4a8fc \
+            --corpus-root shared_unseen_mq46 --provider groq \
+            --model "$GROQ_MODEL" --output records/candidate --port 19052
+          result=$?
+          echo "CANDIDATE_RECORDER_EXIT=$result" >> "$GITHUB_ENV"
+          echo "Candidate recording exit: $result"
+          exit 0
+      - name: Score paired unseen answers against frozen factual and citation rubric
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          python harness/scripts/score_unseen_interview.py \
+            --baseline records/main/browser_results.json \
+            --candidate records/candidate/browser_results.json \
+            --output records/comparison
+          result=$?
+          echo "SCORER_EXIT=$result"
+          exit 0
+      - name: Upload both uncut videos, original source answers and 18-question comparison
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: MQ46-UNSEEN-GROQ-ORIGINAL-VS-PR9-FULL-INTERVIEW
+          path: |
+            records/main/browser_results.json
+            records/main/full_uncut_interview.webm
+            records/main/full_uncut_interview.mp4
+            records/main/stills/*.png
+            records/candidate/browser_results.json
+            records/candidate/full_uncut_interview.webm
+            records/candidate/full_uncut_interview.mp4
+            records/candidate/stills/*.png
+            records/comparison/RESULTS.md
+            records/comparison/unseen_paired_answers.csv
+            records/comparison/main_graded.json
+            records/comparison/candidate_graded.json
+          retention-days: 30
+          if-no-files-found: warn
+          compression-level: 0
+      - name: Strict proof gate - no winner if either recording lacks all 18 real answers
+        if: always()
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=[Path('records/main/browser_results.json'),
+             Path('records/candidate/browser_results.json')]
+          for path in p:
+              if not path.exists():
+                  raise SystemExit('MISSING_INTERVIEW_REPORT '+str(path))
+              r=json.loads(path.read_text())
+              print('ACTUAL_INTERVIEW',r['engine_ref'],r['summary'],
+                    'video',r.get('video'))
+              if not r.get('recording_verified') or r['summary']['completed_with_answer']!=18:
+                  raise SystemExit('INCOMPLETE_OR_PROVIDER_BLOCKED '+r['engine_ref'])
+          a,b=(json.loads(path.read_text()) for path in p)
+          assert a['document_hashes']==b['document_hashes']
+          assert a['ground_truth_sha256']==b['ground_truth_sha256']
+          assert a['model']==b['model']== 'openai/gpt-oss-20b'
+          assert a['provider']==b['provider']=='groq'
+          print('UNSEEN_PAIRED_INTERVIEW_COMPLETE 18+18 raw UI answers and both videos')
+          PY
