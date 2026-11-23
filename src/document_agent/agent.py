@@ -28,8 +28,8 @@ from .query_plan import plan_question
 from .recovery import recover_answer
 from .retrieval_ids import requested_references
 from .semantic_verifier import verify_judgement
-from .structured_reporting import complete_milestone_schedule, verified_base_subtotal
 from .spreadsheet import _records as _boq_records
+from .structured_reporting import complete_milestone_schedule, verified_base_subtotal
 from .tools import (
     DATE_REGEX,
     TOOL_SCHEMAS,
