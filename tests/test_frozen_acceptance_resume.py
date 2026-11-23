@@ -84,8 +84,10 @@ def test_transient_openrouter_in_flight_402_retries_without_spending_more_on_per
     attempts = []
     class Transient(Exception):
         status_code = 402
-        body = {"error": {"metadata": {"limit_source":
-                                      "openrouter_in_flight_budget"}}}
+        def __init__(self):
+            super().__init__("temporary")
+            self.body = {"error": {"metadata": {
+                "limit_source": "openrouter_in_flight_budget"}}}
     def transient_once(*_args, **_kwargs):
         attempts.append("called")
         if len(attempts) == 1:
@@ -99,7 +101,10 @@ def test_transient_openrouter_in_flight_402_retries_without_spending_more_on_per
 
     class Permanent(Exception):
         status_code = 402
-        body = {"error": {"metadata": {"limit_source": "openrouter_credits"}}}
+        def __init__(self):
+            super().__init__("permanent")
+            self.body = {"error": {"metadata": {
+                "limit_source": "openrouter_credits"}}}
     attempts.clear()
     def permanent(*_args, **_kwargs):
         attempts.append(1)
