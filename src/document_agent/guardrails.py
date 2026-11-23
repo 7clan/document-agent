@@ -427,6 +427,13 @@ def exact_item_answer(conn: sqlite3.Connection, question: str, plan: QueryPlan):
             or re.search(r"(?i)\b(?:contract sum|contract value|change order|"
                          r"across documents|versus contract)\b", question)):
         return None
+    # A reference to a signed amendment/variation is a document decision,
+    # not an exact BOQ line item. Do not hijack addendum scope/cost questions.
+    if (re.search(r"(?i)\\b(?:addendum|amendment|variation|change order|"
+                  r"change request|contract modification)\\b", question)
+            and not re.search(r"(?i)\\b(?:BOQ|line item|item code|item ref|"
+                              r"worksheet row)\\b", question)):
+        return None
     identifier = identifiers[0]
     file = ""
     if plan.scope_kind == "named" and len(plan.document_scope) == 1:
