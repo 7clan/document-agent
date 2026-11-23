@@ -1,0 +1,204 @@
+name: BLIND AQ73 | pinned main vs PR10 real browser interview
+
+on:
+  push:
+    branches: [experiment/blind-holdout-main-vs-pr10-2026-11-23]
+    paths: [.github/workflows/blind-aq73-main-vs-pr10.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: independent-blind-aq73-main-versus-pr10
+  cancel-in-progress: false
+
+jobs:
+  prospective-blind-pair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 165
+    env:
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY_2 }}
+      GEMINI_MODEL: gemini-3.5-flash-lite
+      DOCUMENT_AGENT_RETRIEVAL_MODE: hybrid
+      DOCUMENT_AGENT_EMBEDDING_ALLOW_DOWNLOAD: '1'
+      DOCUMENT_AGENT_SEMANTIC_VERIFY: '0'
+      HF_HUB_DISABLE_TELEMETRY: '1'
+      OPENROUTER2: ${{ secrets.OPENROUTER2 }}
+    steps:
+      - name: Checkout absolutely unmodified original main
+        uses: actions/checkout@v4
+        with:
+          ref: b4bfc744583060b5854184d7628fbd354e694771
+          path: main_engine
+      - name: Checkout frozen PR10 before corpus was written
+        uses: actions/checkout@v4
+        with:
+          ref: 18a116c2b8077fb4aecb53e8274e4671cbf3f04e
+          path: pr10_engine
+      - name: Checkout isolated prespecified holdout harness (not app code)
+        uses: actions/checkout@v4
+        with:
+          ref: bc365308383580e51118aa20f4a2e51621316383
+          path: holdout
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: minilm-l6-v2-huggingface-v1
+      - name: Install document formats and real headless Chromium
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e './holdout[dev,openai,embeddings]'
+          python -m pip install playwright
+          python -m playwright install --with-deps chromium
+      - name: Freeze checks BEFORE testing either application
+        shell: bash
+        run: |
+          set -e
+          test -n "$GEMINI_API_KEY"
+          python -m py_compile holdout/scripts/create_blind_aquifer_corpus.py \
+            holdout/scripts/record_blind_aquifer.py \
+            holdout/scripts/score_blind_aquifer.py \
+            holdout/scripts/blind_semantic_review.py
+          python - <<'PY'
+          import hashlib,json
+          from pathlib import Path
+          rubric=Path('holdout/evaluation/blind_aquifer_questions.json').read_bytes()
+          d=json.loads(rubric)
+          ids=[q['id'] for q in d['questions']]
+          assert len(ids)==18 and ids==list(range(1,19))
+          assert all(q['expected_answer'] and q['question'] for q in d['questions'])
+          print('BLIND_QA_HASH',hashlib.sha256(rubric).hexdigest(),flush=True)
+          print('MAIN_FROZEN_SHA b4bfc744583060b5854184d7628fbd354e694771',flush=True)
+          print('PR10_FROZEN_SHA 18a116c2b8077fb4aecb53e8274e4671cbf3f04e',flush=True)
+          print('HOLDOUT_FROZEN_SHA bc365308383580e51118aa20f4a2e51621316383',flush=True)
+          PY
+      - name: Create exactly one truly new 9-document AQ73 collection
+        run: |
+          python holdout/scripts/create_blind_aquifer_corpus.py --output shared_aq73
+          python - <<'PY'
+          import hashlib,json
+          from pathlib import Path
+          p=Path('shared_aq73')
+          hashes={q.name:hashlib.sha256(q.read_bytes()).hexdigest() for q in sorted(p.iterdir())}
+          assert len(hashes)==9
+          Path('aq73_corpus_sha256.json').write_text(json.dumps(hashes,indent=2))
+          print('BLIND_CORPUS_SHA256',json.dumps(hashes),flush=True)
+          PY
+      - name: Record every first completed answer from original MAIN
+        shell: bash
+        run: |
+          set +e
+          PYTHONPATH="$PWD/main_engine/src" python holdout/scripts/record_blind_aquifer.py \
+            --engine-root main_engine --engine-ref main \
+            --engine-sha b4bfc744583060b5854184d7628fbd354e694771 \
+            --corpus-root shared_aq73 --provider gemini --model "$GEMINI_MODEL" \
+            --output answers/main --port 19151
+          echo "MAIN_RECORDER_EXIT=$?" >> "$GITHUB_ENV"
+          exit 0
+      - name: Rest provider quota before second engine
+        run: sleep 120
+      - name: Record every first completed answer from frozen PR10
+        shell: bash
+        run: |
+          set +e
+          PYTHONPATH="$PWD/pr10_engine/src" python holdout/scripts/record_blind_aquifer.py \
+            --engine-root pr10_engine --engine-ref pr10 \
+            --engine-sha 18a116c2b8077fb4aecb53e8274e4671cbf3f04e \
+            --corpus-root shared_aq73 --provider gemini --model "$GEMINI_MODEL" \
+            --output answers/pr10 --port 19152
+          echo "PR10_RECORDER_EXIT=$?" >> "$GITHUB_ENV"
+          exit 0
+      - name: Preserve rigid baseline rubric for audit not semantic truth
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          python holdout/scripts/score_blind_aquifer.py \
+            --baseline answers/main/browser_results.json \
+            --candidate answers/pr10/browser_results.json \
+            --output answers/legacy
+          echo "LEGACY_SCORER_EXIT=$?" >> "$GITHUB_ENV"
+          exit 0
+      - name: Independent question-aware grading without modifying either engine
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          if [ -s answers/main/browser_results.json ] && \
+             [ -s answers/pr10/browser_results.json ] && \
+             [ -n "$OPENROUTER2" ]; then
+            python holdout/scripts/blind_semantic_review.py \
+              --baseline answers/main/browser_results.json \
+              --candidate answers/pr10/browser_results.json \
+              --rubric holdout/evaluation/blind_aquifer_questions.json \
+              --output answers/semantic \
+              --judge-provider openrouter \
+              --judge-model google/gemma-4-31b-it
+            echo "SEMANTIC_SCORER_EXIT=$?" >> "$GITHUB_ENV"
+          else
+            echo "SEMANTIC_JUDGE_SKIPPED_PARTIAL_OR_NO_CREDENTIAL"
+          fi
+          exit 0
+      - name: Preserve actual original responses and both real uncut videos
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: blind-AQ73-pinned-main-vs-PR10-original-answers-and-videos
+          path: |
+            shared_aq73/
+            aq73_corpus_sha256.json
+            holdout/evaluation/blind_aquifer_questions.json
+            answers/main/browser_results.json
+            answers/main/full_uncut_interview.webm
+            answers/main/full_uncut_interview.mp4
+            answers/main/stills/*.png
+            answers/pr10/browser_results.json
+            answers/pr10/full_uncut_interview.webm
+            answers/pr10/full_uncut_interview.mp4
+            answers/pr10/stills/*.png
+            answers/legacy/
+            answers/semantic/
+          retention-days: 30
+          if-no-files-found: warn
+          compression-level: 0
+      - name: Fairness gate — never call a provider interruption a model failure
+        if: always()
+        run: |
+          python - <<'PY'
+          import json,hashlib
+          from pathlib import Path
+          ps=[Path('answers/main/browser_results.json'),Path('answers/pr10/browser_results.json')]
+          if any(not x.is_file() for x in ps):
+              raise SystemExit('NO_COMPLETE_PAIRED_RECORDINGS')
+          main,new=(json.loads(x.read_text()) for x in ps)
+          expected_sha={
+              'main':'b4bfc744583060b5854184d7628fbd354e694771',
+              'pr10':'18a116c2b8077fb4aecb53e8274e4671cbf3f04e',
+          }
+          for r in (main,new):
+              print('BLIND_RECORDING',r['engine_ref'],r['summary'],flush=True)
+              assert r['engine_sha']==expected_sha[r['engine_ref']]
+          assert main['document_hashes']==new['document_hashes']
+          assert main['ground_truth_sha256']==new['ground_truth_sha256']
+          assert main['provider']==new['provider']=='gemini'
+          assert main['model']==new['model']=='gemini-3.5-flash-lite'
+          assert main['ground_truth_sha256']==hashlib.sha256(
+              Path('holdout/evaluation/blind_aquifer_questions.json').read_bytes()
+          ).hexdigest()
+          if any(r['summary']['completed_with_answer']!=18
+                 or not r.get('recording_verified') for r in (main,new)):
+              raise SystemExit('BLIND_RESULT_INCOMPLETE_PROVIDER_OR_UI_NO_WINNER')
+          sem=Path('answers/semantic/semantic_review.json')
+          if not sem.is_file():
+              raise SystemExit('SEMANTIC_JUDGE_NOT_COMPLETE_NO_WINNER')
+          graded=json.loads(sem.read_text())
+          for side in ('main','candidate'):
+              print('BLIND_GRADE',side,graded['results'][side]['summary'],flush=True)
+              if graded['results'][side]['summary']['judged']!=18:
+                  raise SystemExit('BLIND_SEMANTIC_PARTIAL_NO_WINNER')
+          print('COMPLETE_BLIND_AQ73_18_PLUS_18_UI_AND_36_JUDGMENTS',flush=True)
+          PY
