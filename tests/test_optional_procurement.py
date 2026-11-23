@@ -6,7 +6,6 @@ from document_agent.db import connect
 from document_agent.optional_procurement import verified_optional_procurement
 from document_agent.query_plan import plan_question
 
-
 QUESTION = "Can the optional energy store be ordered under the signed papers?"
 
 
