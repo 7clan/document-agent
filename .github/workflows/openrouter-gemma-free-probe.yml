@@ -1,0 +1,61 @@
+name: One real FREE OpenRouter Gemma 4 tool-call probe
+on:
+  push:
+    branches: [experiment/final-paired-interview-2026-11-23]
+    paths:
+      - .github/workflows/openrouter-gemma-free-probe.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  real-free-gemma-tool:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      COMPATIBLE_API_KEY: ${{ secrets.OPENROUTER_API_KEY || secrets.OPEN_ROUTER_API_KEY || secrets.OPENROUTER_KEY || secrets.OPENROUTER }}
+      COMPATIBLE_BASE_URL: https://openrouter.ai/api/v1
+      COMPATIBLE_MODEL: google/gemma-4-31b-it:free
+      DOCUMENT_AGENT_RETRIEVAL_MODE: keyword
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Require private OpenRouter key
+        run: test -n "$COMPATIBLE_API_KEY"
+      - name: Install real document agent with tool-calling adapter
+        run: pip install -e '.[dev,openai]'
+      - name: Run just one REAL free-Gemma tool call against original corpus
+        run: |
+          python scripts/create_release_corpus.py --output .local/free_gemma_corpus
+          python - <<'PY'
+          from pathlib import Path
+          from document_agent.agent import ask, provider_error_diagnostic
+          from document_agent.db import connect
+          from document_agent.ingest import ingest_folder
+          conn = connect(Path('.local/free_gemma_smoke.db'))
+          try:
+              ingest_folder(conn, str(Path('.local/free_gemma_corpus').resolve()))
+              try:
+                  answer = ask(
+                      conn,
+                      "Which electrical cabinets must be brought into service?",
+                      provider="compatible",
+                      model="google/gemma-4-31b-it:free")
+                  print("FREE_GEMMA_ACTUAL", {
+                      "verification_status": answer.verification_status,
+                      "answer": answer.text[:800],
+                      "sources": answer.sources[:5],
+                      "model_tool_count": sum(
+                          c.get("origin") != "application"
+                          for c in answer.tool_calls),
+                  }, flush=True)
+                  assert "P-11" in answer.text and "P-12" in answer.text
+                  assert answer.sources
+              except Exception as exc:
+                  print("FREE_GEMMA_PROVIDER_DIAGNOSTIC",
+                        provider_error_diagnostic(exc), flush=True)
+                  raise
+          finally:
+              conn.close()
+          PY
