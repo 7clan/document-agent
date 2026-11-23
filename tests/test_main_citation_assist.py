@@ -28,12 +28,12 @@ def corpus():
         docs,
     )
     passages = [
-        (1, 1, 0, "Drone surveys, emergency battery banks, and cloud hosting "
-         "subscriptions are excluded. Original signed value SAR 8,750,000."),
-        (2, 1, 0, "The signed variation approved SAR 315,000. "
-         "Revised authorized contract value SAR 9,065,000."),
-        (3, 1, 0, "CR-12 proposes new water meters. This request is unsigned "
-         "and not approved. Proposed cost SAR 450,000."),
+        (1, 1, 0, ("Drone surveys, emergency battery banks, and cloud hosting "
+                   "subscriptions are excluded. Original signed value SAR 8,750,000.")),
+        (2, 1, 0, ("The signed variation approved SAR 315,000. "
+                   "Revised authorized contract value SAR 9,065,000.")),
+        (3, 1, 0, ("CR-12 proposes new water meters. This request is unsigned "
+                   "and not approved. Proposed cost SAR 450,000.")),
     ]
     conn.executemany(
         "INSERT INTO passages(document_id,page,chunk,text) VALUES(?,?,?,?)",
