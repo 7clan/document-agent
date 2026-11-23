@@ -531,6 +531,54 @@ def _resolve_supports(conn: sqlite3.Connection, claim: str, supports: list[Any],
     return citations, excerpts, full_sources, ""
 
 
+
+def _transfer_role_reversal(claim: str, excerpts: list[str]) -> bool:
+    """Reject an unambiguous actor/recipient inversion in an authentic quote.
+
+    This is intentionally narrow: only matching transfer verbs and matching
+    transferred objects qualify. It does not attempt general text entailment,
+    passive-voice parsing, or semantic paraphrase verification.
+    """
+    action = re.compile(
+        r"\b(?P<agent>(?:[a-z]+\s+){0,4}[a-z]+)\s+"
+        r"(?P<verb>handed|transferred|sent|passed|forwarded|gave|delivered)\s+"
+        r"(?P<item>.+?)\s+to\s+"
+        r"(?P<recipient>(?:[a-z]+\s+){0,4}[a-z]+)\b",
+        re.IGNORECASE,
+    )
+
+    def events(text: str) -> list[tuple[str, str, str, str]]:
+        output = []
+        for sentence in re.split(r"[.;!?\n]+", text):
+            match = action.search(sentence.strip())
+            if match:
+                output.append((
+                    match["verb"].casefold(),
+                    match["agent"],
+                    match["item"],
+                    match["recipient"],
+                ))
+        return output
+
+    def terms(value: str) -> set[str]:
+        return {token for token in re.findall(r"[a-z]{2,}", value.casefold())
+                if token not in {"the", "an", "and", "for", "with", "site"}}
+
+    for verb, subject, item, recipient in events(claim):
+        actor = terms(subject)
+        receiver = terms(recipient)
+        moved = terms(item)
+        if not actor or not receiver or not moved or actor == receiver:
+            continue
+        for quote in excerpts:
+            for source_verb, source_actor, source_item, source_receiver in events(quote):
+                if (verb == source_verb and len(moved & terms(source_item)) >= 1
+                        and actor == terms(source_receiver)
+                        and receiver == terms(source_actor)):
+                    return True
+    return False
+
+
 def _check_comparable_facts(conn: sqlite3.Connection, claim: str,
                             excerpts: list[dict[str, Any]], full_sources: list[str],
                             allowed: set[str]) -> str:
@@ -560,6 +608,8 @@ def _check_comparable_facts(conn: sqlite3.Connection, claim: str,
     conflict = _direct_conflict(claim, combined)
     if conflict:
         return conflict
+    if _transfer_role_reversal(claim, [item["quote"] for item in excerpts]):
+        return "Actor and recipient roles are reversed relative to the cited evidence"
     if _status(claim) is not None:
         status_clauses = [piece for piece in _clauses(whole)
                           if (_status(piece) == _status(claim)

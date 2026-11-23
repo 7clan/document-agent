@@ -1,0 +1,154 @@
+name: Unseen mixed-format semantic A/B
+
+on:
+  push:
+    branches: [feature/claim-evidence-hardening]
+    paths:
+      - scripts/evaluate_unseen_semantics.py
+      - src/document_agent/claim_verifier.py
+      - src/document_agent/recovery.py
+      - .github/workflows/unseen-semantic-ab.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: unseen-semantic-ab
+  cancel-in-progress: true
+
+jobs:
+  offline-ab:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      DOCUMENT_AGENT_EMBEDDING_ALLOW_DOWNLOAD: '1'
+      HF_HUB_DISABLE_TELEMETRY: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: evaluation
+      - uses: actions/checkout@v4
+        with:
+          ref: a238cb6eb213eb06258ce6081716dfc3cdf83de1
+          path: baseline
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/claim-evidence-hardening
+          path: candidate
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: minilm-l6-v2-huggingface-v1
+      - run: pip install -e './candidate[dev,openai,embeddings]'
+      - run: python evaluation/scripts/evaluate_unseen_semantics.py --generate-corpus unseen-shared
+      - name: Compare identical generated documents
+        run: |
+          mkdir -p unseen-results
+          for commit in baseline candidate; do
+            for mode in keyword hybrid; do
+              python evaluation/scripts/evaluate_unseen_semantics.py \
+                --engine-root "$commit" --mode "$mode" --provider none \
+                --corpus-root unseen-shared \
+                --output "unseen-results/${commit}_${mode}_offline.json"
+            done
+          done
+      - name: Check corpus hashes and print the measurements
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          reports = {p.stem: json.loads(p.read_text()) for p in
+                     sorted(Path('unseen-results').glob('*offline.json'))}
+          hashes = [r['document_hashes'] for r in reports.values()]
+          assert all(h == hashes[0] for h in hashes), 'A/B documents differ'
+          for name, report in reports.items():
+              print('AB', name, json.dumps(report['summary']), flush=True)
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: unseen-ab-offline
+          path: unseen-results/
+          retention-days: 30
+
+  live-ab:
+    runs-on: ubuntu-latest
+    timeout-minutes: 65
+    env:
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      GEMINI_MODEL: gemini-2.5-flash
+      COMPATIBLE_API_KEY: ${{ secrets.OPENROUTER_API_KEY || secrets.OPEN_ROUTER_API_KEY || secrets.OPENROUTER_KEY || secrets.OPENROUTER }}
+      COMPATIBLE_BASE_URL: https://openrouter.ai/api/v1
+      COMPATIBLE_MODEL: google/gemma-4-31b-it
+      DOCUMENT_AGENT_EMBEDDING_ALLOW_DOWNLOAD: '1'
+      HF_HUB_DISABLE_TELEMETRY: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: evaluation
+      - uses: actions/checkout@v4
+        with:
+          ref: a238cb6eb213eb06258ce6081716dfc3cdf83de1
+          path: baseline
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/claim-evidence-hardening
+          path: candidate
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: minilm-l6-v2-huggingface-v1
+      - run: pip install -e './candidate[dev,openai,embeddings]'
+      - run: python evaluation/scripts/evaluate_unseen_semantics.py --generate-corpus unseen-shared
+      - name: Same questions through real Gemini and Gemma APIs
+        run: |
+          mkdir -p unseen-results
+          for provider in gemini compatible; do
+            if [ "$provider" = gemini ] && [ -z "$GEMINI_API_KEY" ]; then
+              echo "Gemini unavailable: no key"; continue
+            fi
+            if [ "$provider" = compatible ] && [ -z "$COMPATIBLE_API_KEY" ]; then
+              echo "OpenRouter unavailable: no key"; continue
+            fi
+            for commit in baseline candidate; do
+              python evaluation/scripts/evaluate_unseen_semantics.py \
+                --engine-root "$commit" --mode hybrid --provider "$provider" \
+                --corpus-root unseen-shared \
+                --output "unseen-results/${commit}_${provider}_live.json"
+            done
+          done
+      - name: Report paired correct-plus-cited and raw answers
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          reports = {p.stem: json.loads(p.read_text()) for p in
+                     sorted(Path('unseen-results').glob('*live.json'))}
+          for name, report in reports.items():
+              print('AB', name, json.dumps(report['summary']), flush=True)
+              for i, row in enumerate(report['qa'], 1):
+                  print('CASE', name, i, json.dumps({
+                      k:row.get(k) for k in ('question','answer',
+                      'semantic_anchor_match','source_coverage',
+                      'verification_status','provider_error')}), flush=True)
+          for provider in ('gemini','compatible'):
+              old, new = (reports.get(f'{c}_{provider}_live') for c in
+                          ('baseline','candidate'))
+              if old and new:
+                  assert old['document_hashes'] == new['document_hashes']
+                  print('PAIR', provider, 'baseline', old['summary']['qa_both'],
+                        'candidate', new['summary']['qa_both'])
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: unseen-ab-live-raw-answers
+          path: unseen-results/
+          retention-days: 30

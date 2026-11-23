@@ -160,16 +160,16 @@ def test_financial_query_uses_original_cells_not_model_amounts(tmp_path):
         "Gates.xlsx | Gate Register!F5", "Gates.xlsx | Gate Register!F9"}
 
 
-def test_authentic_quote_cannot_prove_role_direction(tmp_path):
-    """Known semantic false acceptances must remain labeled as interpretation."""
+def test_authentic_quote_cannot_support_reversed_transfer_roles(tmp_path):
+    """An authentic quote must not certify the opposite transfer direction."""
     conn = _corpus(tmp_path)
     citation = "Variation.pdf | page 1 | chunk 0"
     wrong = _verify(
         conn, "The subcontractor handed the drawings to the architect.",
         [(citation, "The architect handed the drawings to the subcontractor.")],
     )
-    assert wrong["status"] == "evidence_linked"
-    assert wrong["claims"][0]["reason"] == "Interpretation is not independently proven"
+    assert wrong["status"] == "unverified"
+    assert "Actor and recipient roles are reversed" in wrong["claims"][0]["reason"]
     wrong_row = _verify(conn, "TG-41 is a pump trial.",
                         [("Gates.xlsx | Gate Register | row 5", "")])
     assert wrong_row["status"] == "evidence_linked"
