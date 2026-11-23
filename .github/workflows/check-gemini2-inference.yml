@@ -1,0 +1,48 @@
+name: Try two listed Gemini models with GEMINI_API_KEY_2
+on:
+  push:
+    branches: [experiment/final-paired-interview-2026-11-23]
+    paths: [.github/workflows/check-gemini2-inference.yml]
+permissions:
+  contents: read
+jobs:
+  minimally-verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY_2 }}
+    steps:
+      - name: Minimal direct Gemini model call, no key disclosure
+        run: |
+          python - <<'PY'
+          import json,os,urllib.request,urllib.error
+          key=os.getenv('GEMINI_API_KEY','').strip()
+          if not key:
+              print('GEMINI_KEY2_REQUEST missing_secret')
+              raise SystemExit(1)
+          payload=json.dumps({
+              'contents':[{'parts':[{'text':'Reply only READY.'}]}],
+              'generationConfig':{'temperature':0,'maxOutputTokens':32}
+          }).encode()
+          available=False
+          for model in ('gemini-3.5-flash-lite','gemini-3.5-flash'):
+              req=urllib.request.Request(
+                  f'https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent',
+                  data=payload,method='POST',
+                  headers={'x-goog-api-key':key,'Content-Type':'application/json'})
+              try:
+                  with urllib.request.urlopen(req,timeout=35) as r:
+                      result=json.load(r)
+                      valid=bool(result.get('candidates'))
+                      print('GEMINI_KEY2_REQUEST',model,'http_status',r.status,
+                            'model_responded',valid)
+                      available=available or valid
+              except urllib.error.HTTPError as e:
+                  print('GEMINI_KEY2_REQUEST',model,'http_status',e.code)
+              except (TimeoutError,urllib.error.URLError,OSError,ValueError) as e:
+                  print('GEMINI_KEY2_REQUEST',model,'request_error',type(e).__name__)
+              if available:
+                  break
+          if not available:
+              raise SystemExit(1)
+          PY
