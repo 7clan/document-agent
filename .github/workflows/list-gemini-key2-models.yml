@@ -1,0 +1,39 @@
+name: Read supported Gemini models using GEMINI_API_KEY_2 (no inference)
+on:
+  push:
+    branches: [experiment/final-paired-interview-2026-11-23]
+    paths: [.github/workflows/list-gemini-key2-models.yml]
+permissions:
+  contents: read
+jobs:
+  list-models:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    env:
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY_2 }}
+    steps:
+      - name: List only model names and API status, never the secret
+        run: |
+          python - <<'PY'
+          import os,json,urllib.request,urllib.error
+          key=os.getenv('GEMINI_API_KEY','').strip()
+          if not key:
+              print('GEMINI_KEY2_MODELS missing_secret')
+              raise SystemExit(1)
+          request=urllib.request.Request(
+              'https://generativelanguage.googleapis.com/v1beta/models?pageSize=100',
+              headers={'x-goog-api-key':key,'Accept':'application/json'})
+          try:
+              with urllib.request.urlopen(request,timeout=25) as response:
+                  d=json.load(response)
+                  options=[m.get('name') for m in d.get('models',[])
+                           if 'generateContent' in m.get('supportedGenerationMethods',[])]
+                  print('GEMINI_KEY2_MODELS http_status',response.status)
+                  print('GEMINI_KEY2_MODELS_COMPATIBLE',options[:30])
+          except urllib.error.HTTPError as e:
+              print('GEMINI_KEY2_MODELS http_status',e.code)
+              raise SystemExit(1)
+          except Exception as e:
+              print('GEMINI_KEY2_MODELS request_error',type(e).__name__)
+              raise SystemExit(1)
+          PY
