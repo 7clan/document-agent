@@ -1,0 +1,58 @@
+name: Finish MQ-46 Gemma reviews with bounded output and in-flight retry
+
+on:
+  push:
+    branches: [feature/semantic-verifier-false-negatives]
+    paths:
+      - .github/workflows/resume-semantic-mq46-capped.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: mq46-capped-gemma-resume
+  cancel-in-progress: true
+
+jobs:
+  complete-remaining-questions:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      GH_TOKEN: ${{ github.token }}
+      OPENROUTER2: ${{ secrets.OPENROUTER2 }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install lightweight API client
+        run: pip install 'openai>=1.0,<3'
+      - name: Recover 24 previous valid semantic judgments
+        run: |
+          gh run download 45188276194 \
+            --repo 7clan/document-agent \
+            --name MQ46-Gemma-alternate-OpenRouter-key-review \
+            --dir prior-reviewed
+          test -s prior-reviewed/remaining-semantic-results/semantic_review.json
+      - name: Continue unreviewed with same Gemma, capped max_tokens
+        run: |
+          test -n "$OPENROUTER2"
+          python scripts/resume_semantic_review.py \
+            --prior prior-reviewed/remaining-semantic-results/semantic_review.json \
+            --rubric evaluation/unseen_coldchain_interview.json \
+            --output final-semantic-results \
+            --judge-provider openrouter \
+            --judge-model google/gemma-4-31b-it \
+            --max-calls 24 \
+            --pause-seconds 9
+      - name: Archive final and partial responses
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: MQ46-final-Gemma-semantic-regrade
+          path: |
+            final-semantic-results/
+            prior-reviewed/remaining-semantic-results/
+          retention-days: 30

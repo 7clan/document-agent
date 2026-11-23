@@ -184,6 +184,9 @@ def original_contract_subtotal_comparison(
 def contrasted_internal_and_contractual_dates(
         conn: sqlite3.Connection, question: str, plan: QueryPlan):
     """Compare distinct planning and signed-handover dates without mixing proposals."""
+    # Do not answer a three-date question with only two selected dates.
+    if re.search(r"(?i)\b(?:proposals?|proposed|pending|unsigned)\b", question):
+        return None
     if (plan.scope_kind == "mixed"
             or not re.search(r"(?i)\b(?:contrast|compare|difference between)\b",
                              question)

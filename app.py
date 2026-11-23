@@ -356,6 +356,7 @@ if "last_answer" in st.session_state:
         st.caption("No successful document search occurred for this answer; hybrid retrieval was not tested.")
     status_labels = {"deterministically_verified": "Deterministically calculated",
                      "evidence_linked": "AI answer with checked source references; facts not verified",
+                     "semantic_supported": "AI interpretation supported by checked source quotes; human review may still be needed",
                      "unverified": "Unverified or insufficient"}
     inventory_answer = "document_inventory" in (answer.structured or {})
     checked_comparison = (answer.verification_status == "evidence_linked"

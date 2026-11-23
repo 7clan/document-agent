@@ -275,6 +275,12 @@ def exact_register_milestone_answer(conn: sqlite3.Connection, question: str,
         r"planning target|final date)\b", question))
     if not wants_date and not wants_status:
         return None
+    # Approval of physical scope or cost is not a dated milestone query.
+    if (wants_status and not wants_date
+            and not re.search(r"(?i)\b(?:milestone|deadline|handover|"
+                              r"completion date|target date|final date|schedule|due date)\b",
+                              question)):
+        return None
 
     scoped_file = (plan.document_scope[0] if plan.scope_kind == "named"
                    and len(plan.document_scope) == 1 else "")
@@ -420,6 +426,13 @@ def exact_item_answer(conn: sqlite3.Connection, question: str, plan: QueryPlan):
             or plan.scope_kind == "mixed"
             or re.search(r"(?i)\b(?:contract sum|contract value|change order|"
                          r"across documents|versus contract)\b", question)):
+        return None
+    # A reference to a signed amendment/variation is a document decision,
+    # not an exact BOQ line item. Do not hijack addendum scope/cost questions.
+    if (re.search(r"(?i)\b(?:addendum|amendment|variation|change order|"
+                  r"change request|contract modification)\b", question)
+            and not re.search(r"(?i)\b(?:BOQ|line item|item code|item ref|"
+                              r"worksheet row)\b", question)):
         return None
     identifier = identifiers[0]
     file = ""

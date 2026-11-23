@@ -1,0 +1,75 @@
+name: Probe available Gemini credentials and model access for controlled interview
+
+on:
+  push:
+    branches: [feature/semantic-verifier-false-negatives]
+    paths: [.github/workflows/probe-gemini-interview-access.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  safe-model-access-probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    env:
+      GEMINI_KEY_NEW: ${{ secrets.GEMINI_API_KEY_2 }}
+      GEMINI_KEY_OLD: ${{ secrets.GEMINI_API_KEY }}
+    steps:
+      - name: Check supported model list and one tiny inference per candidate without disclosing keys
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json,os,time,urllib.request,urllib.error
+          candidates=(
+              "gemini-3.5-flash-lite",
+              "gemini-3.5-flash",
+              "gemini-2.5-flash-lite",
+              "gemini-2.5-flash",
+          )
+          payload=json.dumps({
+              "contents":[{"parts":[{"text":"Reply only READY"}]}],
+              "generationConfig":{"temperature":0,"maxOutputTokens":16},
+          }).encode()
+          for label,keyvar in (("NEW","GEMINI_KEY_NEW"),("OLD","GEMINI_KEY_OLD")):
+              key=os.getenv(keyvar,"").strip()
+              print("PROBE_KEY",label,"configured",bool(key),flush=True)
+              if not key:continue
+              req=urllib.request.Request(
+                  "https://generativelanguage.googleapis.com/v1beta/models?pageSize=100",
+                  headers={"x-goog-api-key":key})
+              try:
+                  with urllib.request.urlopen(req,timeout=20) as resp:
+                      data=json.load(resp)
+                      listed=[m.get("name","").removeprefix("models/")
+                              for m in data.get("models",[])
+                              if "generateContent" in m.get("supportedGenerationMethods",[])]
+                      print("PROBE_MODELS_LISTED",label,
+                            [name for name in listed if "flash" in name][:22],
+                            flush=True)
+              except urllib.error.HTTPError as exc:
+                  print("PROBE_LIST_HTTP",label,exc.code,flush=True)
+                  listed=[]
+              except Exception as exc:
+                  print("PROBE_LIST_ERROR",label,type(exc).__name__,flush=True)
+                  listed=[]
+              for model in candidates:
+                  if listed and model not in listed:
+                      print("PROBE_MODEL",label,model,"not_listed",flush=True)
+                      continue
+                  req=urllib.request.Request(
+                      f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
+                      data=payload,method="POST",
+                      headers={"x-goog-api-key":key,"Content-Type":"application/json"})
+                  try:
+                      with urllib.request.urlopen(req,timeout=30) as resp:
+                          data=json.load(resp)
+                          print("PROBE_MODEL",label,model,"HTTP",resp.status,
+                                "response",bool(data.get("candidates")),flush=True)
+                  except urllib.error.HTTPError as exc:
+                      print("PROBE_MODEL",label,model,"HTTP",exc.code,flush=True)
+                  except Exception as exc:
+                      print("PROBE_MODEL",label,model,type(exc).__name__,flush=True)
+                  time.sleep(2)
+          PY
