@@ -126,6 +126,28 @@ def test_frozen_release_documents_are_ingested_and_critical_items_resolve(tmp_pa
         assert cell in answer.sources[0]
         assert answer.verification_status == "deterministically_verified"
 
+    signed_addition = ask(
+        conn, "What additional cable support did the signed instruction add?",
+        provider="gemini")
+    assert "30" in signed_addition.text and "South Gallery" in signed_addition.text
+    assert signed_addition.sources == [
+        "02_Signed_Change_Order_CO12.pdf | page 1 | chunk 0",
+        "05_Selected_BoQ.xlsx | Approved CO12 | row 4",
+    ]
+    assert signed_addition.verification_status == "evidence_linked"
+    assert any(event["name"] == "host_verified_signed_addition"
+               for event in signed_addition.tool_calls)
+
+    independent_sources = ask(
+        conn, "Which two sources confirm the South Gallery addition?",
+        provider="gemini")
+    assert independent_sources.sources == [
+        "02_Signed_Change_Order_CO12.pdf | page 1 | chunk 0",
+        "04_Site_Coordination_Minutes.docx | paragraph 3",
+    ]
+    assert independent_sources.verification_status == "evidence_linked"
+    assert "site coordination minutes" in independent_sources.text
+
     missing = ask(conn, "What amount belongs to exact item HP-999?",
                   provider="gemini")
     assert "No exact item HP-999" in missing.text
