@@ -30,8 +30,8 @@ def _index(*, two_signed: bool = False, add_minutes: bool = True):
             "SELECT id FROM documents WHERE path='Site_Meeting_Minutes.docx'"
         ).fetchone()[0]
         conn.execute(
-            "INSERT INTO word_blocks(document_id,location,text) VALUES(?,?,?)",
-            (minutes_id, "paragraph 3",
+            "INSERT INTO word_blocks(document_id,ordinal,location,text) VALUES(?,?,?,?)",
+            (minutes_id, 3, "paragraph 3",
              "Participants reviewed CO-12: 30 metres extra South Gallery tray."))
     return conn
 
