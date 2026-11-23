@@ -140,7 +140,7 @@ def retry_temporary_budget(conn, question: str, provider: str) -> tuple[object, 
     for attempt in range(4):
         try:
             return ask(conn, question, provider=provider), attempt
-        except Exception as exc:  # noqa: BLE001 - inspect sanitized provider code
+        except Exception as exc:
             safe = provider_error_diagnostic(exc)
             if (safe.get("http_status") != 402
                     or safe.get("limit_source") != "openrouter_in_flight_budget"
