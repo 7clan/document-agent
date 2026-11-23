@@ -1,5 +1,20 @@
 # Release assessment notes — 22 November 2026
 
+## Final bounded-recovery candidate
+
+- Added a validated query plan, typed original-source evidence ledger, and a
+  postflight recovery path capped at two attempts across local and provider
+  corrections. A corrected answer is checked again before display.
+- Tightened explicit identifier, date, amount, and citation checks. Unsupported
+  absence statements are not promoted to verified facts; original excerpts are
+  shown when recovery cannot establish the answer.
+- Preserved the existing read-only tool and deterministic BOQ paths. A local
+  `requirements.lock` records the tested Windows/Python 3.12 environment.
+- The unchanged 44-question live run completed, with 11/15 critical cases
+  meeting expected behavior. Four critical cases remain failed, so the
+  [final release evaluation](FINAL_RELEASE_EVALUATION.md) says **NOT READY**.
+  The prior observations below are historical and do not supersede that result.
+
 This feature branch improves hybrid retrieval and evidence presentation without
 changing the provider adapters, read-only tool list or deterministic BOQ arithmetic.
 

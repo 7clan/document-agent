@@ -8,6 +8,11 @@ read-only tools, and has provider adapters for Gemini, OpenAI, Groq, and Ollama 
 Live tests used fictional documents; results and limitations are described below.
 Source-linked model prose still needs human review.
 
+**Current release verdict: NOT READY for an unattended interview demonstration.**
+The [final 44-question live evaluation](docs/FINAL_RELEASE_EVALUATION.md) found
+four failed critical cases despite passing automated tests. The application
+remains demonstrable with human review of original sources.
+
 ## Features
 
 - Index a local folder of PDF, `.xlsx`, `.xlsm`, legacy `.xls`, and `.docx` files; nested directories supported.
@@ -18,6 +23,8 @@ Source-linked model prose still needs human review.
 - Store data in a local SQLite database and report per-file corruption/unsupported formats.
 - Six read-only tools: `list_documents`, `inspect_document`, `search_documents`, `query_spreadsheet`,
   `extract_dates`, `get_evidence`.
+- Validated query plans, an application-owned evidence ledger, and at most two
+  bounded recovery attempts when an answer lacks usable evidence or citations.
 - Ollama Cloud (Gemma 4 31B by default), Gemini, OpenAI, or Groq tool-calling loop, with source citations and an audit trace.
 - Streamlit interface plus command-line invocation; offline `pytest` tests.
 
@@ -54,6 +61,13 @@ document-agent ask "List all cost items above SAR 1 million in the BOQs"
 document-agent smoke  # tests real provider function calling with synthetic, nonconfidential text
 python -m streamlit run app.py
 ```
+
+For the **Windows/Python 3.12** dependency snapshot used in final release
+checks, install `requirements.lock` into a fresh virtual environment, then
+install this checkout with `python -m pip install -e . --no-deps`. The ordinary
+`pyproject.toml` installation above remains the supported path for Python 3.11
+and other platforms. The lock pins versions but does not include wheel hashes;
+see the dependency audit in the [final release evaluation](docs/FINAL_RELEASE_EVALUATION.md).
 
 ### Add downloaded documents in the browser (PDF, Excel, Word)
 
@@ -129,11 +143,11 @@ still present in the indexed folder. The citation remains visible beside the
 source content. This helps a user check a model's interpretation; it is
 not an automatic fact-verification verdict.
 
-The active path **does not run the old claim verifier**. It does not judge model
+The active path **does not run the old semantic claim verifier**. It does not judge model
 prose or approval status through broad semantic rules, so correct grouped Excel
 answers are no longer removed by per-row semantic checks. It does check that
-explicit dates in a claim occur somewhere in its cited passages, accepting
-equivalent unambiguous date formats. A valid citation establishes
+explicit dates, identifiers, and stated currency amounts occur in cited original
+evidence or, for a comparison threshold, in the question. A valid citation establishes
 provenance, not factual correctness: a model can still misunderstand a passage or
 associate a short cell value with the wrong row. Such answers are labeled **AI answer
 with checked source references; facts not verified**. An invalid or unobserved
@@ -172,9 +186,13 @@ the index, up to 12,000 characters across the question. This makes source text
 available even when a model never calls `get_evidence`; it does not establish
 complete coverage of long documents. The audit records citation IDs and the size
 of this handoff, not its text. A model that reports insufficient evidence after
-retrieving sources
-gets at most one answer retry with indexed evidence; if it still reports absence,
-the answer remains unverified and the retrieved locations are shown for review.
+retrieving sources may receive a bounded correction with indexed evidence.
+The application also validates the final answer against a typed source ledger
+and may search locally or request one compact correction from the same provider.
+Provider and application corrections share a **maximum of two attempts**. If
+evidence remains insufficient, the answer stays unverified and original source
+excerpts are shown for review instead of presenting an unsupported "not found"
+statement as certain.
 If it uses the entire tool-round budget, one final
 generation request with tools disabled asks it to answer from the evidence already
 retrieved, or state that evidence is insufficient. For prose questions, a provider
@@ -197,6 +215,9 @@ JSON, but there is no second model request just to judge the answer. The legacy
 experiments; neither filters claims in the live provider path. For ambiguous
 requests such as "the contract" when multiple contracts are indexed, name the
 file. Cross-workbook BOQ sums remain separated by file and currency.
+
+The [recovery architecture note](docs/RECOVERY_ARCHITECTURE.md) explains the
+query plan, source ledger, correction budget, and factuality limits.
 
 A structured response now needs only a claim and retrieved citation:
 
@@ -545,3 +566,91 @@ offline test. Inspect the archive yourself before sharing it; this command does 
 The application is maintained in this repository. Git history preserves the initial project
 version; the source-only archive script is optional. Keep credentials, real documents and
 local SQLite indexes out of any shared release.
+
+### Record the real Streamlit interview (no mocked model responses)
+
+The optional [live browser recorder](scripts/record_live_interview.py) launches the
+actual Streamlit application, generates a fictional source-document folder, indexes it
+in the browser, asks six questions, and records the entire Chromium session. Two
+questions require real Gemini tool calls; the other four exercise deterministic
+exact-item or corrupted-document safeguards. The recording report includes every
+observed answer and whether the provider-backed questions completed.
+
+A real `GEMINI_API_KEY` is required in your private, Git-ignored `.env` or process
+environment. The recorder exits without inventing a video if it is missing.
+
+On a computer with Chromium dependencies:
+
+```powershell
+python -m pip install -e ".[dev]" playwright
+python -m playwright install chromium
+python scripts/record_live_interview.py
+```
+
+Artifacts are written under `.local/release_browser_recordings/<UTC timestamp>/`:
+the uncut video, `recording_results.json`, and the fictional documents used.
+The report sets `recording_verified` to true **only** if all six questions completed
+and at least two actual provider-backed questions returned answers. A successful
+video capture is not proof that every substantive model claim is true; original
+sources still need review.
+
+The optional GitHub Actions workflow *Real model browser recording* attempts the
+same procedure when the repository securely has an Actions secret named
+`GEMINI_API_KEY`. It intentionally skips the live recording when no secret is
+configured, and never stores API keys in workflow files or video metadata.
+Do not describe a skipped run as a completed model evaluation.
+
+### Verified providers and release checks — 22 November 2026
+
+**Google Gemini 2.5 Flash:** Validated with a genuine API text-generation request,
+all six declared document tools and the actual document agent. The six-question
+uncut browser recording passed with two model-backed questions and four Python
+safety checks. [Browser evidence](https://github.com/7clan/document-agent/actions/runs/45060267223).
+
+**Google Gemma 4 31B through OpenRouter:** The project's existing `compatible`
+provider has been tested with real OpenRouter Chat Completions requests. Two
+model questions used native tool calls, returned exact original-source
+citations, and the deterministic BOQ threshold test completed.
+[Gemma evidence](https://github.com/7clan/document-agent/actions/runs/45062669060).
+OpenRouter credentials are never hardcoded and are distinct from Gemini credentials.
+
+For Gemma 4 through OpenRouter, install with `pip install -e '.[openai,dev]'`
+and set these in your **private**, ignored `.env` (values are examples, not a key):
+
+```dotenv
+LLM_PROVIDER=compatible
+COMPATIBLE_BASE_URL=https://openrouter.ai/api/v1
+COMPATIBLE_MODEL=google/gemma-4-31b-it
+COMPATIBLE_API_KEY=your_own_openrouter_key
+```
+
+For Gemini, use `LLM_PROVIDER=gemini` and provide `GEMINI_API_KEY` in your
+private `.env`. No provider key belongs in Git, sample documents, saved video,
+logs, or source-only archives. The optional GitHub workflows read corresponding
+**Actions repository secrets**, with only the raw key as the secret value.
+
+**Hybrid retrieval:** The genuine on-runner MiniLM model (not a mock) achieved
+Hit@5 37/40 (92.5%), versus keyword-only 35/40 (87.5%), with zero fallbacks.
+Three real Gemini questions also exercised the hybrid path.
+[Hybrid evidence](https://github.com/7clan/document-agent/actions/runs/45062311080).
+
+**Dependency safety:** The Windows dependency snapshot now pins Pillow 13.0.0
+and Streamlit 1.67.0. The Python 3.11 CI audit checked the installed runtime and
+the Windows pinned list with `pip-audit`, finding no listed vulnerabilities,
+and `pip check` found no broken requirements.
+[Audit evidence](https://github.com/7clan/document-agent/actions/runs/45062802160).
+A clean Windows 3.12 installation remains the definitive compatibility check
+for that platform; the Linux dependency audit alone cannot certify a Windows runtime.
+
+**44-question full evaluation:** A separate unchanged-label benchmark runs
+through production `ask()`, records every actual answer, citation, tool-use event
+and provider error, and uploads a JSON transcript. Short demo success should not
+be confused with this complete acceptance measure. Gemini 2.5 Flash hit API
+HTTP 429 limits during the attempted full batch; the evaluator now stops after
+two consecutive quota failures rather than repeatedly sending requests. A
+Gemma OpenRouter replay is also available to test the full set with a separate
+provider. Sources may resolve correctly while claims are still semantically
+wrong; independent source reading remains required before release.
+
+A successful smoke test does **not** automatically authorize merging a draft PR.
+

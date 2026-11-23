@@ -17,7 +17,7 @@ from document_agent.db import connect
 from document_agent.file_manager import folder_files, remove_document
 from document_agent.ingest import ingest_folder
 from document_agent.source_viewer import local_pdf_page, source_detail
-from document_agent.tools import extract_dates, list_documents, query_spreadsheet
+from document_agent.tools import TOOLS, extract_dates, list_documents, query_spreadsheet
 from document_agent.ui_format import display_safe_rows
 from document_agent.uploads import save_uploaded_file
 
@@ -301,8 +301,21 @@ with st.sidebar:
     with st.expander("Index details and diagnostics", expanded=False):
         st.json(indexed, expanded=False)
 
+def _clear_answer_on_question_edit() -> None:
+    """Invalidate displayed evidence before another question can be shown."""
+    st.session_state.pop("last_answer", None)
+    st.session_state.pop("open_source", None)
+    st.session_state.pop("csv_export", None)
+    st.session_state.pop("_answer_for_question", None)
+
+
 question = st.text_area("Ask a question about the indexed documents",
-                        placeholder="List all total cost items above SAR 1 million across the BOQs")
+                        placeholder="List all total cost items above SAR 1 million across the BOQs",
+                        on_change=_clear_answer_on_question_edit)
+if ("last_answer" in st.session_state
+        and "_answer_for_question" in st.session_state
+        and st.session_state["_answer_for_question"] != question):
+    _clear_answer_on_question_edit()
 st.caption("Questions are independent: include the filename, threshold, or item selection "
            "instead of referring to 'those items' from an earlier answer.")
 if st.button("Ask agent", disabled=not question.strip() or not ready_to_ask or
@@ -316,14 +329,17 @@ if st.button("Ask agent", disabled=not question.strip() or not ready_to_ask or
         except Exception as exc:  # noqa: BLE001 - show provider errors in the UI
             st.session_state.pop("last_answer", None)
             st.error(safe_provider_error(exc, provider))
+            st.caption("Failed question: " + question)
             st.caption("Provider diagnostic (status, code, request phase only)")
             st.json(provider_error_diagnostic(exc))
         else:
             st.session_state["last_answer"] = answer
+            st.session_state["_answer_for_question"] = question
             st.session_state.pop("csv_export", None)
 
 if "last_answer" in st.session_state:
     answer = st.session_state["last_answer"]
+    st.caption("Answered question: " + st.session_state.get("_answer_for_question", question))
     searches = [call for call in answer.tool_calls
                 if call.get("name") == "search_documents" and call.get("ok")]
     hybrid_searches = [call for call in searches if call.get("retrieval_mode") == "hybrid"]
@@ -350,6 +366,10 @@ if "last_answer" in st.session_state:
                     if checked_comparison else
                     status_labels.get(answer.verification_status, "Unverified"))
     st.caption("Answer status: " + status_label)
+    model_tool_count = sum(call.get("name") in TOOLS and
+                           call.get("origin") != "application"
+                           for call in answer.tool_calls)
+    st.caption(f"Model document-tool calls: {model_tool_count}")
     st.markdown(answer.text)
     st.subheader("Source references")
     candidate_sources = (answer.structured or {}).get("candidate_sources", [])

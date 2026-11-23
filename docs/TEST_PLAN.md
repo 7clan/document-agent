@@ -641,3 +641,26 @@ sample cannot establish that the prompt prevents future tool errors or
 omissions. The ignored local JSON audits are named
 `*_ollama_cloud_gpt-oss_20b_tighter_prompt_v2.json` in
 `.local/interview_tests/final_interview_3_results/`. No browser interaction was performed.
+# Final bounded-recovery acceptance (22 November 2026)
+
+The [final report](FINAL_RELEASE_EVALUATION.md) records the unchanged 44-case
+production `ask()` replay, a separately frozen eight-case corpus, real MiniLM
+keyword/hybrid measurements, the browser interview, and provider errors.
+Automated regression paths for validated planning, evidence-ledger provenance,
+missing retrieval, one-to-one citation linking, fabricated IDs/amounts,
+unsupported absence, same-provider correction, correction failures, shared
+retry budget, and scoped numeric routing are in
+[`tests/test_bounded_recovery.py`](../tests/test_bounded_recovery.py).
+
+Release gate commands from the repository root:
+
+```powershell
+python -m pytest -q
+ruff check src tests app.py scripts
+python -m pip check
+```
+
+These tests cannot establish semantic truth for unfamiliar contracts. Inspect
+each live answer against its original PDF passage, Word block, or Excel cell.
+Keep provider 402/429/503 outcomes separate from factual model errors. Do not
+revise the frozen labels to improve a score.

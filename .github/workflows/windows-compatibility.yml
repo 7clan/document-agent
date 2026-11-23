@@ -1,0 +1,40 @@
+name: Windows Python 3.12 application compatibility
+
+on:
+  push:
+    branches:
+      - feature/bounded-self-recovery
+    paths:
+      - pyproject.toml
+      - requirements.lock
+      - src/document_agent/agent.py
+      - src/document_agent/guardrails.py
+      - tests/test_exact_scope_guards.py
+      - .github/workflows/windows-compatibility.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install real application runtime and offline test dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip setuptools
+          python -m pip install -e '.[dev]'
+      - name: Assert Pillow 13 and Streamlit 1.67 on Windows
+        shell: pwsh
+        run: |
+          python -c "from importlib.metadata import version; assert version('pillow').startswith('13.'); assert version('streamlit').startswith('1.67.'); print('Validated Windows versions:', version('pillow'), version('streamlit'))"
+          python -m pip check
+      - name: Execute actual production unit and integration tests on Windows
+        shell: pwsh
+        run: python -m pytest -q

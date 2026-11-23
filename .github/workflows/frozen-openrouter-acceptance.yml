@@ -1,0 +1,57 @@
+name: Frozen 44-question OpenRouter Gemma 4 acceptance
+# Post-citation-recovery rerun: preserve the original frozen question labels.
+
+on:
+  push:
+    branches:
+      - feature/bounded-self-recovery
+    paths:
+      - evaluation/TRIGGER_GEMMA_44.txt
+  workflow_dispatch:
+
+# All provider-backed acceptance runs share a queue. Do not run two batches
+# concurrently against the same account or spend budget.
+concurrency:
+  group: document-agent-paid-acceptance
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  gemma-44:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    env:
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY || secrets.OPEN_ROUTER_API_KEY || secrets.OPENROUTER_KEY || secrets.OPENROUTER }}
+      COMPATIBLE_API_KEY: ${{ secrets.OPENROUTER_API_KEY || secrets.OPEN_ROUTER_API_KEY || secrets.OPENROUTER_KEY || secrets.OPENROUTER }}
+      COMPATIBLE_BASE_URL: https://openrouter.ai/api/v1
+      COMPATIBLE_MODEL: google/gemma-4-31b-it
+      DOCUMENT_AGENT_RETRIEVAL_MODE: keyword
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Require private OpenRouter credential
+        run: |
+          if [ -z "$OPENROUTER_API_KEY" ]; then
+            echo "OPENROUTER_API_KEY secret missing: no Gemma calls made."
+            exit 1
+          fi
+      - name: Install production document-agent with compatible provider support
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e '.[dev,openai]'
+      - name: Replay unchanged 44 frozen questions through actual OpenRouter Gemma
+        run: |
+          python scripts/run_frozen_acceptance.py --provider compatible \
+            --mode keyword --delay 2 --output .local/frozen_gemma_acceptance
+      - name: Preserve source-linked observed Gemma answers and errors
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: real-gemma-44-acceptance
+          path: .local/frozen_gemma_acceptance/acceptance_results.json
+          retention-days: 14
+          if-no-files-found: warn

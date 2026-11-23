@@ -99,6 +99,50 @@ def test_provider_usage_error_reports_safe_action_without_response_body():
     assert provider_error_diagnostic(error)["phase"] == "tool"
 
 
+def test_openrouter_402_limit_source_is_reported_without_sensitive_metadata():
+    error = RuntimeError("never leak raw OpenRouter responses or bearer tokens")
+    error.status_code = 402
+    error._document_phase = "tool"
+    error.body = {
+        "error": {
+            "code": 402,
+            "message": "private billing data never shown",
+            "metadata": {
+                "limit_source": "openrouter_in_flight_budget",
+                "provider_name": "Private vendor",
+                "remedy_hint": "secret profile URL",
+            },
+        },
+    }
+    assert provider_error_diagnostic(error) == {
+        "http_status": 402,
+        "code": "provider_error",
+        "phase": "tool",
+        "limit_source": "openrouter_in_flight_budget",
+    }
+    assert "secret" not in str(provider_error_diagnostic(error))
+    assert "private" not in str(provider_error_diagnostic(error)).lower()
+
+
+@pytest.mark.parametrize("source", [
+    "openrouter_credits", "openrouter_key_limit", "openrouter_in_flight_budget",
+])
+def test_only_known_openrouter_limit_categories_are_allowed(source):
+    exc = RuntimeError("secret")
+    exc.status_code = 402
+    exc.body = {"message": "secret", "metadata": {"limit_source": source}}
+    assert provider_error_diagnostic(exc)["limit_source"] == source
+
+
+def test_provider_cannot_inject_arbitrary_limit_source_into_logs():
+    exc = RuntimeError("secret")
+    exc.status_code = 402
+    exc.body = {"metadata": {
+        "limit_source": "sk-or-v1-private-secret-must-not-appear",
+    }}
+    assert "limit_source" not in provider_error_diagnostic(exc)
+
+
 def test_ollama_server_error_retried_once_without_replaying_history(monkeypatch):
     waits = []
     monkeypatch.setattr("document_agent.agent.time.sleep", waits.append)

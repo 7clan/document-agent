@@ -36,6 +36,12 @@ def test_switching_folders_clears_answer_and_blocks_stale_index(tmp_path, monkey
     assert not next(button for button in page.button
                     if button.label == "Ask agent").disabled
     page.session_state["last_answer"] = Answer("Old answer", ["Old.pdf | document"], [])
+    page.session_state["_answer_for_question"] = "What is in this folder?"
+    page.run()
+    # Entering a different question must immediately invalidate the old answer.
+    page.text_area[0].set_value("Another independent question").run()
+    assert "last_answer" not in page.session_state
+    page.session_state["last_answer"] = Answer("Old answer", ["Old.pdf | document"], [])
     page.run()
     next(field for field in page.sidebar.text_input
          if field.label == "Folder path on this computer").set_value(str(demo_folder)).run()
@@ -164,5 +170,7 @@ def test_streamlit_indexes_and_displays_verified_boq(tmp_path, monkeypatch):
     assert not page.exception
     assert "open_source" not in page.session_state
     assert any("New independent answer" in item.value for item in page.markdown)
+    assert any("Answered question: A new independent question" in item.value
+               for item in page.caption)
     assert not any("Indexed source location" in item.value for item in page.markdown)
     conn.close()

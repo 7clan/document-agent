@@ -1,0 +1,3 @@
+Explicit user-requested full 44-case real Gemma acceptance on feature/bounded-self-recovery, 2026-11-23. Frozen human labels and source verification unchanged. Abort on provider HTTP 402 or repeated HTTP 429. One workflow only; preserve JSON artifact. No secret values stored here.
+
+Second explicitly requested full 44-case Gemma replay after generalized indexed missing-field guards, draft-note trust boundary, and multi-document authorization prompt improvement. Targeted 4-case live acceptance passed 2026-11-23. Zero parallel paid benchmarks. Preserve original expected labels and complete JSON answer transcript.

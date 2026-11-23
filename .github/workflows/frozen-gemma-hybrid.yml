@@ -1,0 +1,61 @@
+name: Frozen 44-question Gemma hybrid retrieval A/B
+
+on:
+  push:
+    branches:
+      - feature/bounded-self-recovery
+    paths:
+      - evaluation/TRIGGER_GEMMA_HYBRID_44.txt
+  workflow_dispatch:
+
+# All provider-backed acceptance runs share a queue. Do not run two batches
+# concurrently against the same account or spend budget.
+concurrency:
+  group: document-agent-paid-acceptance
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  gemma-hybrid-44:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    env:
+      COMPATIBLE_API_KEY: ${{ secrets.OPENROUTER_API_KEY || secrets.OPEN_ROUTER_API_KEY || secrets.OPENROUTER_KEY || secrets.OPENROUTER }}
+      COMPATIBLE_BASE_URL: https://openrouter.ai/api/v1
+      COMPATIBLE_MODEL: google/gemma-4-31b-it
+      DOCUMENT_AGENT_RETRIEVAL_MODE: hybrid
+      DOCUMENT_AGENT_EMBEDDING_ALLOW_DOWNLOAD: '1'
+      HF_HUB_DISABLE_TELEMETRY: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: minilm-l6-v2-huggingface-v1
+      - name: Require private OpenRouter key
+        run: |
+          if [ -z "$COMPATIBLE_API_KEY" ]; then
+            echo "OpenRouter secret unavailable; no Gemma calls attempted."
+            exit 1
+          fi
+      - name: Install actual local MiniLM and Gemma provider requirements
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e '.[dev,openai,embeddings]'
+      - name: Run unchanged 44-case human labels with real hybrid retrieval
+        run: |
+          python scripts/run_frozen_acceptance.py --provider compatible \
+            --mode hybrid --delay 2 --output .local/frozen_gemma_hybrid
+      - name: Save complete measured hybrid responses
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: real-gemma-44-hybrid-acceptance
+          path: .local/frozen_gemma_hybrid/acceptance_results.json
+          retention-days: 14
+          if-no-files-found: warn

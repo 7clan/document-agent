@@ -1,0 +1,62 @@
+name: Resume 44-question Gemma after transient in-flight 402
+
+on:
+  push:
+    branches:
+      - feature/bounded-self-recovery
+    paths:
+      - evaluation/TRIGGER_GEMMA_RESUME_44.txt
+  workflow_dispatch:
+
+concurrency:
+  group: document-agent-paid-acceptance
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  resume-44:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    env:
+      COMPATIBLE_API_KEY: ${{ secrets.OPENROUTER_API_KEY || secrets.OPEN_ROUTER_API_KEY || secrets.OPENROUTER_KEY || secrets.OPENROUTER }}
+      COMPATIBLE_BASE_URL: https://openrouter.ai/api/v1
+      COMPATIBLE_MODEL: google/gemma-4-31b-it
+      DOCUMENT_AGENT_RETRIEVAL_MODE: keyword
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Require separately configured private key
+        run: |
+          if [ -z "$COMPATIBLE_API_KEY" ]; then
+            echo "OpenRouter secret missing; no provider requests will be made."
+            exit 1
+          fi
+      - name: Retrieve original interrupted run checkpoint (original answers unchanged)
+        uses: actions/download-artifact@v4
+        with:
+          name: real-gemma-44-acceptance
+          run-id: 45091705483
+          github-token: ${{ github.token }}
+          path: .local/frozen_gemma_resume
+      - name: Install real document agent
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e '.[dev,openai]'
+      - name: Resume exactly matching frozen cases after completed case 11
+        run: |
+          python scripts/run_frozen_acceptance.py --provider compatible \
+            --mode keyword --delay 6 --resume \
+            --output .local/frozen_gemma_resume
+      - name: Preserve complete or partially resumed original results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: real-gemma-44-resumed-acceptance
+          path: .local/frozen_gemma_resume/acceptance_results.json
+          retention-days: 14
+          if-no-files-found: warn

@@ -1,0 +1,47 @@
+name: Real MiniLM hybrid retrieval and Gemini agent gate
+
+on:
+  push:
+    branches:
+      - feature/bounded-self-recovery
+    paths:
+      - scripts/run_hybrid_release.py
+      - .github/workflows/hybrid-release.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  hybrid-real:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      GEMINI_MODEL: gemini-2.5-flash
+      DOCUMENT_AGENT_RETRIEVAL_MODE: hybrid
+      DOCUMENT_AGENT_EMBEDDING_ALLOW_DOWNLOAD: '1'
+      HF_HUB_DISABLE_TELEMETRY: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: minilm-l6-v2-huggingface-v1
+      - name: Install real document agent and MiniLM inference dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e '.[dev,embeddings]'
+      - name: Run actual MiniLM and Gemini hybrid retrieval evaluation
+        run: python scripts/run_hybrid_release.py
+      - name: Preserve original retrieval ranks and live observed answers
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: real-minilm-hybrid-and-gemini-evidence
+          path: .local/hybrid_validation/hybrid_evidence.json
+          retention-days: 14
+          if-no-files-found: warn
