@@ -77,7 +77,9 @@ def _exact_priced_rows(conn: sqlite3.Connection, identifier: str,
         result = query_spreadsheet(
             conn, operator="all", value=0, file=file,
             text_filter=identifier, limit=500, offset=offset)
-        if "error" in result or result.get("warnings") or result.get("unknown_count"):
+        # Query warnings may refer to unrelated sheets; never discard a
+        # directly verified exact amount because a different row is incomplete.
+        if "error" in result:
             return None
         candidates.extend(result.get("matches", []))
         if not result.get("has_more"):
