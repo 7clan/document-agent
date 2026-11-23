@@ -14,7 +14,7 @@ from document_agent.agent import (
 from document_agent.db import connect
 from document_agent.evidence_ledger import build_ledger
 from document_agent.query_plan import plan_question
-from document_agent.recovery import recover_answer
+from document_agent.recovery import _link_unique_exact_quotes, recover_answer
 
 
 def _db():
@@ -274,3 +274,58 @@ def test_exact_item_file_is_not_inferred_if_code_exists_in_two_workbooks():
     conn.execute("INSERT INTO sheet_rows(document_id,sheet,row_num,cells_json) "
                  "VALUES(3,'Other',2,?)", (json.dumps(cells),))
     assert _infer_exact_item_file(conn, "EL-103", {}) == {}
+
+
+def test_exact_quote_recovery_respects_question_file_scope():
+    conn = _db()
+    conn.execute("INSERT INTO documents(id,path,kind,status) "
+                 "VALUES(3,'Other.pdf','pdf','ready')")
+    original = "Change order CO-12 is approved."
+    conn.execute("INSERT INTO passages(document_id,page,chunk,text) "
+                 "VALUES(3,1,0,?)", (original,))
+    cite = "Other.pdf | page 1 | chunk 0"
+    initial = _source_linked_answer(
+        conn, _draft(original), [cite],
+        [{"name": "search_documents", "ok": True}])
+    assert _link_unique_exact_quotes(
+        conn, "What does Contract.pdf say about CO-12?", initial,
+        build_ledger(conn, [cite])) == 0
+    assert not initial.sources
+    assert initial.verification_status == "unverified"
+    conn.close()
+
+
+def test_exact_quote_recovery_rejects_conflicting_indexed_decision():
+    conn = _db()
+    conn.execute("INSERT INTO documents(id,path,kind,status) "
+                 "VALUES(3,'Revision.pdf','pdf','ready')")
+    conn.execute("INSERT INTO passages(document_id,page,chunk,text) "
+                 "VALUES(3,1,0,'Change order CO-12 was rejected.')")
+    original = "Change order CO-12 is approved."
+    cite = "Contract.pdf | page 1 | chunk 0"
+    opposing = "Revision.pdf | page 1 | chunk 0"
+    initial = _source_linked_answer(
+        conn, _draft(original), [cite, opposing],
+        [{"name": "search_documents", "ok": True}])
+    assert _link_unique_exact_quotes(
+        conn, "Was change order CO-12 approved?", initial,
+        build_ledger(conn, [cite, opposing])) == 0
+    assert not initial.sources
+    assert initial.verification_status == "unverified"
+    conn.close()
+
+
+def test_exact_quote_recovery_rejects_unready_original():
+    conn = _db()
+    conn.execute("UPDATE documents SET status='failed', error='partial data' "
+                 "WHERE path='Contract.pdf'")
+    original = "Change order CO-12 is approved."
+    cite = "Contract.pdf | page 1 | chunk 0"
+    initial = _source_linked_answer(
+        conn, _draft(original), [cite],
+        [{"name": "search_documents", "ok": True}])
+    assert _link_unique_exact_quotes(
+        conn, "Is CO-12 approved?", initial, build_ledger(conn, [cite])) == 0
+    assert not initial.sources
+    assert initial.verification_status == "unverified"
+    conn.close()
