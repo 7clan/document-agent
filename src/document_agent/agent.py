@@ -1592,6 +1592,10 @@ def _source_linked_answer(conn: sqlite3.Connection, text: str, citations: list[s
                 indexed_for_citations = indexed_records(conn)
             recovered = recover_literal_source(statement, indexed_for_citations)
             if recovered:
+                # These citations came from SQLite source_records rather than
+                # the model. The existing get_evidence lookup still resolves
+                # each exact pointer before it is shown to the user.
+                retrieved.update(recovered)
                 supports = [{"citation": cite} for cite in recovered]
                 recovered_count += 1
         local: list[dict[str, str]] = []
