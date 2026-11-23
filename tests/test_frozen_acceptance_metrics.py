@@ -57,3 +57,32 @@ def test_provider_429_only_counts_error_not_an_answer():
     assert result["provider_http_429"] == 1
     assert result["answers_without_citations"] == 0
     assert result["verified_source_citations"] == 0
+
+
+def test_expected_source_metrics_exclude_intentionally_citation_free_questions():
+    report = _summarize([
+        {"id": 1, "critical": True, "expected_citations": [],
+         "actual_citations": [], "all_expected_sources_covered": True,
+         "verification_status": "unverified"},
+        {"id": 2, "critical": True,
+         "expected_citations": ["contract.pdf | page 1 | chunk 0"],
+         "actual_citations": ["contract.pdf | page 1 | chunk 0"],
+         "all_expected_sources_covered": True,
+         "verification_status": "evidence_linked"},
+        {"id": 3, "critical": True,
+         "expected_citations": ["contract.pdf | page 2 | chunk 0"],
+         "actual_citations": ["other.pdf | page 1 | chunk 0"],
+         "all_expected_sources_covered": False,
+         "verification_status": "evidence_linked"},
+        {"id": 4, "critical": False,
+         "expected_citations": ["document.docx | paragraph 1"],
+         "actual_citations": ["document.docx | paragraph 1"],
+         "all_expected_sources_covered": True,
+         "verification_status": "evidence_linked"},
+    ])
+    assert report["expected_sources_covered"] == 3  # old inclusive metric
+    assert report["evidence_required_cases"] == 3
+    assert report["evidence_required_all_expected_sources"] == 2
+    assert report["critical_evidence_required_cases"] == 2
+    assert report["critical_evidence_required_all_expected_sources"] == 1
+    assert report["citation_free_expected_cases"] == 1
