@@ -229,7 +229,8 @@ All tested answers retained their original document provenance; the entire
 44-case evaluation used **zero LLM API calls**.
 
 [Latest offline Linux checks](https://github.com/7clan/document-agent/actions/runs/45090184905):
-**353 passing tests**, Ruff and retrieval checks. These are deterministic
+**353 passing tests**, Ruff and retrieval checks.
+[Windows Python 3.12 compatibility](https://github.com/7clan/document-agent/actions/runs/45090179798) also passed **353 tests** and `pip check` on the same source commit. These are deterministic
 grounding and test results. **The full end-to-end model accuracy has not
 been remeasured** and should never be conflated with 19/44 host coverage or
 92.5% hybrid source Hit@5. Provider quota/billing previously blocked that
