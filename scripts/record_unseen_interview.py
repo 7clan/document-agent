@@ -130,7 +130,7 @@ def main() -> int:
     parser.add_argument("--corpus-root", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--port", type=int, default=18951)
-    parser.add_argument("--provider", choices=("groq", "compatible"), default="compatible")
+    parser.add_argument("--provider", choices=("groq", "compatible", "gemini"), default="gemini")
     parser.add_argument("--model", default="google/gemma-4-31b-it")
     args = parser.parse_args()
     engine = args.engine_root.resolve()
@@ -140,7 +140,8 @@ def main() -> int:
         parser.error("Refusing to overwrite an existing recorded benchmark")
     if not (engine / "app.py").is_file() or not corpus.is_dir():
         parser.error("An original app.py checkout and shared corpus are required")
-    key_name = "GROQ_API_KEY" if args.provider == "groq" else "COMPATIBLE_API_KEY"
+    key_name = {"groq": "GROQ_API_KEY", "compatible": "COMPATIBLE_API_KEY",
+                "gemini": "GEMINI_API_KEY"}[args.provider]
     if not os.getenv(key_name, "").strip():
         parser.error(f"{key_name} secret missing; no fake recording permitted")
     out.mkdir(parents=True, exist_ok=True)
