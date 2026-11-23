@@ -1,4 +1,4 @@
-name: Real paired MAIN vs patched PR10 using stable Gemini 2.5 Flash
+name: Real MAIN vs patched PR10 via original Gemini key 2.5 Flash
 
 on:
   push:
@@ -11,7 +11,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: stable-25flash-mq46-main-vs-patched-pr10-20261123
+  group: verified-key1-25flash-main-vs-patched-pr10-20261123
   cancel-in-progress: false
 
 jobs:
@@ -19,7 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 160
     env:
-      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY_2 }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       GEMINI_MODEL: gemini-2.5-flash
       LLM_PROVIDER: gemini
       DOCUMENT_AGENT_RETRIEVAL_MODE: hybrid
@@ -138,7 +138,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: stable-25flash-MQ46-MAIN-vs-patched-PR10-real-browser-interviews
+          name: verified-key1-MQ46-MAIN-vs-patched-PR10-real-browser-interviews
           path: |
             records/main/browser_results.json
             records/main/full_uncut_interview.webm
