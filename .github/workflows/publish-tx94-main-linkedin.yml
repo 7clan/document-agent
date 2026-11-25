@@ -1,0 +1,86 @@
+name: Publish genuine MAIN-only LinkedIn clip from completed TX94 interview
+
+on:
+  push:
+    branches: [experiment/final-unseen-main-vs-citation-linkedin-2026-11-25]
+    paths: [.github/workflows/publish-tx94-main-linkedin.yml]
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  cut-real-main-success:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: experiment/final-unseen-main-vs-citation-linkedin-2026-11-25
+      - name: Retrieve original MAIN browser video, exact answers and blind grading
+        run: |
+          gh run download 45608813595 \
+            --repo 7clan/document-agent \
+            --name TX94-FINAL-UNSEEN-MAIN-VS-CITATION-BENCHMARK \
+            --dir completed
+          test -s completed/filmed/main/full_uncut_interview.webm
+          test -s completed/filmed/main/browser_results.json
+          test -s completed/comparisons/semantic_review.json
+          test -s completed/harness/evaluation/tx94_final_questions.json
+      - name: Install FFmpeg (not preinstalled on this GitHub runner)
+        run: |
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq ffmpeg
+          ffmpeg -hide_banner -version | head -1
+      - name: Choose independently correct, fully real, citation-resolvable Q&A
+        run: |
+          python scripts/make_main_linkedin_clip.py \
+            --report completed/filmed/main/browser_results.json \
+            --rubric completed/harness/evaluation/tx94_final_questions.json \
+            --semantic-report completed/comparisons/semantic_review.json \
+            --video completed/filmed/main/full_uncut_interview.webm \
+            --output linkedin
+          test -s linkedin/tx94_main_linkedin_highlight.mp4
+          test -s linkedin/tx94_main_clip_manifest.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=json.loads(Path('linkedin/tx94_main_clip_manifest.json').read_text())
+          print('LINKEDIN_CLIP_VERIFIED',json.dumps(p),flush=True)
+          r=json.loads(Path('completed/comparisons/semantic_review.json').read_text())
+          print('TX94_BLIND_FINAL_SCORES',json.dumps({
+              k: r['results'][k]['summary'] for k in ('main','candidate')
+          }),flush=True)
+          for a,b in zip(r['results']['main']['cases'],
+                         r['results']['candidate']['cases']):
+              print('QUESTION_BY_QUESTION',a['id'],
+                    'main',a['semantic_label'],a['citations'],
+                    'citation_only',b['semantic_label'],b['citations'],flush=True)
+          PY
+      - name: Publish MP4 to isolated experiment branch (never to main)
+        run: |
+          mkdir -p media
+          cp linkedin/tx94_main_linkedin_highlight.mp4 media/
+          cp linkedin/tx94_main_clip_manifest.json media/
+          cp linkedin/tx94_main_answer_frame.jpg media/
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add media/tx94_main_linkedin_highlight.mp4 \
+            media/tx94_main_clip_manifest.json \
+            media/tx94_main_answer_frame.jpg
+          git commit -m 'Publish genuine original-main TX94 question-and-answer LinkedIn clip'
+          git push origin HEAD:refs/heads/experiment/final-unseen-main-vs-citation-linkedin-2026-11-25
+      - name: Provide independent downloadable MP4 artifact as backup
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: LINKEDIN-READY-TX94-MAIN-SUCCESSFUL-QA-MP4
+          path: |
+            linkedin/tx94_main_linkedin_highlight.mp4
+            linkedin/tx94_main_answer_frame.jpg
+            linkedin/tx94_main_clip_manifest.json
+          if-no-files-found: warn
+          retention-days: 90
+          compression-level: 0
