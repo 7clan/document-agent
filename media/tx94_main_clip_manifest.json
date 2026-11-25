@@ -1,0 +1,22 @@
+{
+  "dataset": "TX94 2026-11-25 Final Unseen LinkedIn Case Study",
+  "engine": "original unmodified main",
+  "commit": "b4bfc744583060b5854184d7628fbd354e694771",
+  "model": "gemini-3.5-flash-lite",
+  "question_id": 7,
+  "question": "Give the quantity and voltage of the platform-safety sensors, plus the number of remote signal cabinets.",
+  "answer_as_recorded": "AI answer with checked source references; facts not verified\n\nCoverage incomplete: 1 file(s) failed indexing or have unreadable PDF pages.\n\nThere are twelve platform-safety sensors operating at 24 VDC. — 01_TX94_Executed_Agreement.pdf | page 1 | chunk 0\nThere are six remote signal cabinets. — 01_TX94_Executed_Agreement.pdf | page 1 | chunk 0",
+  "citation_references": [
+    "01_TX94_Executed_Agreement.pdf | page 1 | chunk 0"
+  ],
+  "all_citations_resolve": true,
+  "selected_from_independently_correct_cases": true,
+  "all_expected_source_documents_covered": true,
+  "recording_source": "completed/filmed/main/full_uncut_interview.webm",
+  "source_start_seconds": 151.55,
+  "source_end_seconds": 162.05,
+  "edited_out_wait_time": false,
+  "editing_disclosure": "Only the successful question interval was trimmed from the authentic uncut browser recording; the answer is unchanged.",
+  "mp4_duration_seconds": 10.5,
+  "output_mp4": "tx94_main_linkedin_highlight.mp4"
+}
