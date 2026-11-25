@@ -1,0 +1,78 @@
+name: Publish 4-question real MAIN LinkedIn interview reel
+
+on:
+  push:
+    branches: [experiment/final-unseen-main-vs-citation-linkedin-2026-11-25]
+    paths: [.github/workflows/publish-tx94-main-reel.yml]
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  short-authentic-demo:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: experiment/final-unseen-main-vs-citation-linkedin-2026-11-25
+      - name: Get original raw main recording and independent first-pass judgments
+        run: |
+          gh run download 45608813595 \
+            --repo 7clan/document-agent \
+            --name TX94-FINAL-UNSEEN-MAIN-VS-CITATION-BENCHMARK \
+            --dir frozen
+          test -s frozen/filmed/main/full_uncut_interview.webm
+          test -s frozen/comparisons/semantic_review.json
+          test -s frozen/filmed/main/browser_results.json
+      - name: Install FFmpeg for genuine video segment selection
+        run: |
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq ffmpeg
+          ffmpeg -version | head -1
+      - name: Assemble Q1 Q3 Q5 Q7 only if real, correct and source-resolvable
+        run: |
+          python scripts/make_tx94_main_reel.py \
+            --report frozen/filmed/main/browser_results.json \
+            --semantic-report frozen/comparisons/semantic_review.json \
+            --rubric frozen/harness/evaluation/tx94_final_questions.json \
+            --video frozen/filmed/main/full_uncut_interview.webm \
+            --output reel
+          test -s reel/tx94_main_linkedin_reel.mp4
+          test -s reel/tx94_main_reel_manifest.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=json.loads(Path('reel/tx94_main_reel_manifest.json').read_text())
+          assert p['question_count']>=2
+          assert len(p['segments'])==p['question_count']
+          assert all(v['all_citations_resolve'] for v in p['segments'])
+          assert all(v['independently_judged']=='correct' for v in p['segments'])
+          print('REAL_MAIN_LINKEDIN_REEL_METADATA',json.dumps({
+              'ids':p['question_ids'], 'duration_seconds':p['duration_seconds'],
+              'disclosure':p['editing_disclosure'],
+          }),flush=True)
+          PY
+      - name: Commit only the edited MP4 and edit manifest to the isolated benchmark branch
+        run: |
+          cp reel/tx94_main_linkedin_reel.mp4 media/
+          cp reel/tx94_main_reel_manifest.json media/
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add media/tx94_main_linkedin_reel.mp4 media/tx94_main_reel_manifest.json
+          git commit -m 'Publish four real verified original-main Q&A clips for LinkedIn'
+          git push origin HEAD:refs/heads/experiment/final-unseen-main-vs-citation-linkedin-2026-11-25
+      - name: Backup direct MP4 artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: LINKEDIN-TX94-REAL-ORIGINAL-MAIN-MULTI-QA-REEL
+          path: |
+            reel/tx94_main_linkedin_reel.mp4
+            reel/tx94_main_reel_manifest.json
+          if-no-files-found: warn
+          retention-days: 90
+          compression-level: 0
