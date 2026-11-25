@@ -64,13 +64,25 @@ def main() -> None:
     parser.add_argument("--report", type=Path, required=True)
     parser.add_argument("--rubric", type=Path, required=True)
     parser.add_argument("--video", type=Path, required=True)
+    parser.add_argument("--semantic-report", type=Path)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     report = json.loads(args.report.read_text(encoding="utf-8"))
     gold = json.loads(args.rubric.read_text(encoding="utf-8"))
     if report.get("engine_ref") != "main":
         raise ValueError("Only original main may be used for this video")
-    selection = clip_candidate(report["cases"], gold["questions"])
+    if args.semantic_report:
+        review = json.loads(args.semantic_report.read_text(encoding="utf-8"))
+        approved = {
+            row["id"] for row in review["results"]["main"]["cases"]
+            if row["semantic_label"] == "correct" and row["captured"]
+        }
+        print("INDEPENDENTLY_CORRECT_MAIN_CASE_IDS", sorted(approved), flush=True)
+        # Filtering for demo selection does not modify the frozen raw report.
+        options = [row for row in report["cases"] if row["id"] in approved]
+    else:
+        options = report["cases"]
+    selection = clip_candidate(options, gold["questions"])
     args.output.mkdir(parents=True, exist_ok=True)
     if selection is None:
         print("LINKEDIN_CLIP_NOT_PUBLISHED no eligible correct cited response",
@@ -130,6 +142,7 @@ def main() -> None:
         "answer_as_recorded": case["displayed_answer"],
         "citation_references": case["citations"],
         "all_citations_resolve": case["all_sources_resolve"],
+        "selected_from_independently_correct_cases": bool(args.semantic_report),
         "all_expected_source_documents_covered":
             case.get("all_expected_sources_covered"),
         "recording_source": str(args.video),
