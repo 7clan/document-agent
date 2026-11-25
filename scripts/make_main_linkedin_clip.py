@@ -76,7 +76,7 @@ def main() -> None:
         print("LINKEDIN_CLIP_NOT_PUBLISHED no eligible correct cited response",
               flush=True)
         return
-    case, question = selection
+    case, _question = selection
     duration = get_duration(args.video)
     start = max(0.0, float(case["video_start_seconds"]) - 2)
     end = min(duration - 0.1, float(case["video_end_seconds"]) + 4)
