@@ -1,0 +1,88 @@
+{
+  "title": "Document Intelligence Agent — real original-main TX94 unseen interview",
+  "engine_commit": "b4bfc744583060b5854184d7628fbd354e694771",
+  "model": "gemini-3.5-flash-lite",
+  "question_ids": [
+    1,
+    3,
+    5,
+    7
+  ],
+  "question_count": 4,
+  "source_video": "frozen/filmed/main/full_uncut_interview.webm",
+  "duration_seconds": 55.56,
+  "editing_disclosure": "Edited sequence of real, correct, citation-resolvable first-answer interactions from one uncut real browser session. Unrelated questions and waiting periods between questions were removed. Each final answer was held for two extra seconds for readability. No answer text, numbers, references, or model output was altered. The uncut recording is retained in GitHub Actions.",
+  "segments": [
+    {
+      "question_id": 1,
+      "question": "Which signed variation approved new construction work, what exactly was added and at what cost, and did it authorize optional AI video analytics?",
+      "answer_as_recorded": "AI answer with checked source references; facts not verified\n\nCoverage incomplete: 1 file(s) failed indexing or have unreadable PDF pages.\n\nSigned variation V-17 approved new construction work. — 02_TX94_Signed_Change_V17.pdf | page 1 | chunk 0\nIt added fourteen stainless mounting brackets for signal cabinets on the East Viaduct platform access corridor at an incremental cost of EUR 180,000, and did not authorize optional AI video analytics. — 02_TX94_Signed_Change_V17.pdf | page 1 | chunk 0, 05_TX94_Partial_Cost_Book.xlsx | Signed Variation V17 | row 2",
+      "citations": [
+        "02_TX94_Signed_Change_V17.pdf | page 1 | chunk 0",
+        "05_TX94_Partial_Cost_Book.xlsx | Signed Variation V17 | row 2"
+      ],
+      "independently_judged": "correct",
+      "all_citations_resolve": true,
+      "original_interval_seconds": [
+        15.01,
+        37.1
+      ],
+      "segment_mp4": "_case_01.mp4"
+    },
+    {
+      "question_id": 3,
+      "question": "Do the passing quality checks establish final contractual acceptance? Identify the outstanding certificate and who must sign it.",
+      "answer_as_recorded": "AI answer with checked source references; facts not verified\n\nCoverage incomplete: 1 file(s) failed indexing or have unreadable PDF pages.\n\nPassing subsystem tests or quality checks does not constitute contractual acceptance. — 01_TX94_Executed_Agreement.pdf | page 2 | chunk 0\nThe outstanding certificate required for formal acceptance is the System Acceptance Certificate. — 01_TX94_Executed_Agreement.pdf | page 2 | chunk 0\nThe System Acceptance Certificate must be signed by the Chief Systems Assurance Officer of Asterline Transit Authority. — 01_TX94_Executed_Agreement.pdf | page 2 | chunk 0, 04_TX94_Coordination_Minutes.docx | paragraph 6",
+      "citations": [
+        "01_TX94_Executed_Agreement.pdf | page 2 | chunk 0",
+        "04_TX94_Coordination_Minutes.docx | paragraph 6"
+      ],
+      "independently_judged": "correct",
+      "all_citations_resolve": true,
+      "original_interval_seconds": [
+        62.93,
+        80.58
+      ],
+      "segment_mp4": "_case_03.mp4"
+    },
+    {
+      "question_id": 5,
+      "question": "Contrast the internal readiness forecast, the binding signed contractual handover, and the unapproved requested new handover date.",
+      "answer_as_recorded": "AI answer with checked source references; facts not verified\n\nCoverage incomplete: 1 file(s) failed indexing or have unreadable PDF pages.\n\nThe internal readiness estimate is 18 November 2029, serving as a planning-only forecast. — 04_TX94_Coordination_Minutes.docx | paragraph 3, 04_TX94_Coordination_Minutes.docx | table 1 | row 2, 07_TX94_Schedule.xlsx | Schedule | row 5\nThe binding signed contractual handover is 28 November 2029. — 01_TX94_Executed_Agreement.pdf | page 2 | chunk 0, 04_TX94_Coordination_Minutes.docx | paragraph 4, 04_TX94_Coordination_Minutes.docx | table 1 | row 3\nThe unapproved requested new handover date is 12 December 2029, proposed under CR-23 and not approved. — 03_TX94_Unsigned_Proposal_CR23.pdf | page 1 | chunk 0, 04_TX94_Coordination_Minutes.docx | paragraph 5, 04_TX94_Coordination_Minutes.docx | table 1 | row 4, 07_TX94_Schedule.xlsx | Schedule | row 6",
+      "citations": [
+        "04_TX94_Coordination_Minutes.docx | paragraph 3",
+        "04_TX94_Coordination_Minutes.docx | table 1 | row 2",
+        "07_TX94_Schedule.xlsx | Schedule | row 5",
+        "01_TX94_Executed_Agreement.pdf | page 2 | chunk 0",
+        "04_TX94_Coordination_Minutes.docx | paragraph 4",
+        "04_TX94_Coordination_Minutes.docx | table 1 | row 3",
+        "03_TX94_Unsigned_Proposal_CR23.pdf | page 1 | chunk 0",
+        "04_TX94_Coordination_Minutes.docx | paragraph 5",
+        "04_TX94_Coordination_Minutes.docx | table 1 | row 4",
+        "07_TX94_Schedule.xlsx | Schedule | row 6"
+      ],
+      "independently_judged": "correct",
+      "all_citations_resolve": true,
+      "original_interval_seconds": [
+        122.56,
+        131.73
+      ],
+      "segment_mp4": "_case_05.mp4"
+    },
+    {
+      "question_id": 7,
+      "question": "Give the quantity and voltage of the platform-safety sensors, plus the number of remote signal cabinets.",
+      "answer_as_recorded": "AI answer with checked source references; facts not verified\n\nCoverage incomplete: 1 file(s) failed indexing or have unreadable PDF pages.\n\nThere are twelve platform-safety sensors operating at 24 VDC. — 01_TX94_Executed_Agreement.pdf | page 1 | chunk 0\nThere are six remote signal cabinets. — 01_TX94_Executed_Agreement.pdf | page 1 | chunk 0",
+      "citations": [
+        "01_TX94_Executed_Agreement.pdf | page 1 | chunk 0"
+      ],
+      "independently_judged": "correct",
+      "all_citations_resolve": true,
+      "original_interval_seconds": [
+        153.35,
+        160.05
+      ],
+      "segment_mp4": "_case_07.mp4"
+    }
+  ]
+}
