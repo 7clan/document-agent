@@ -1,0 +1,234 @@
+name: FINAL unseen TX94 | original MAIN vs citation-only plus LinkedIn MP4
+
+on:
+  push:
+    branches: [experiment/final-unseen-main-vs-citation-linkedin-2026-11-25]
+    paths:
+      - .github/workflows/final-tx94-main-versus-citations.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: tx94-original-main-vs-citation-only-linkedin
+  cancel-in-progress: false
+
+jobs:
+  real-unseen-video-comparison:
+    runs-on: ubuntu-latest
+    timeout-minutes: 130
+    env:
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY_2 }}
+      GEMINI_MODEL: gemini-3.5-flash-lite
+      OPENROUTER2: ${{ secrets.OPENROUTER2 }}
+      DOCUMENT_AGENT_RETRIEVAL_MODE: hybrid
+      DOCUMENT_AGENT_EMBEDDING_ALLOW_DOWNLOAD: '1'
+      DOCUMENT_AGENT_SEMANTIC_VERIFY: '0'
+      HF_HUB_DISABLE_TELEMETRY: '1'
+    steps:
+      - name: Checkout ORIGINAL main (immutable)
+        uses: actions/checkout@v4
+        with:
+          ref: b4bfc744583060b5854184d7628fbd354e694771
+          path: main_engine
+      - name: Checkout citation-only branch (immutable)
+        uses: actions/checkout@v4
+        with:
+          ref: 4ceacf40e0a63faf209b536d0b38427996b24316
+          path: citation_engine
+      - name: Checkout benchmark code separately from both models
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          path: harness
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: minilm-l6-v2-huggingface-v1
+      - name: Install real UI, office parsers, model interface and ffmpeg
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e './harness[dev,openai,embeddings]'
+          python -m pip install playwright
+          python -m playwright install --with-deps chromium
+          ffmpeg -version | head -1
+      - name: Validate sealed questions and pinned app commits
+        run: |
+          set -e
+          test -n "$GEMINI_API_KEY"
+          python -m py_compile harness/scripts/create_tx94_final_unseen.py \
+            harness/scripts/record_tx94_interview.py \
+            harness/scripts/make_main_linkedin_clip.py \
+            harness/scripts/grade_tx94_semantic.py
+          test "$(git -C main_engine rev-parse HEAD)" = "b4bfc744583060b5854184d7628fbd354e694771"
+          test "$(git -C citation_engine rev-parse HEAD)" = "4ceacf40e0a63faf209b536d0b38427996b24316"
+          python - <<'PY'
+          import hashlib,json
+          from pathlib import Path
+          p=Path("harness/evaluation/tx94_final_questions.json")
+          d=json.loads(p.read_bytes())
+          q=d["questions"]
+          assert len(q)==8 and [x["id"] for x in q]==list(range(1,9))
+          assert all(x["expected_answer"] and x["source_documents"] for x in q)
+          print("FINAL_UNSEEN_8_QUESTION_SHA256",hashlib.sha256(p.read_bytes()).hexdigest(),flush=True)
+          print("PINNED_MAIN b4bfc744583060b5854184d7628fbd354e694771",flush=True)
+          print("PINNED_CITATION_BRANCH 4ceacf40e0a63faf209b536d0b38427996b24316",flush=True)
+          PY
+      - name: Create one genuinely new nine-file TX94 document set
+        run: |
+          python harness/scripts/create_tx94_final_unseen.py --output tx94_shared_docs
+          python - <<'PY'
+          import hashlib,json
+          from pathlib import Path
+          files={p.name:hashlib.sha256(p.read_bytes()).hexdigest()
+                 for p in sorted(Path('tx94_shared_docs').iterdir())}
+          assert len(files)==9
+          Path("tx94_document_hashes.json").write_text(json.dumps(files,indent=2))
+          print("FROZEN_DOCUMENT_HASHES",json.dumps(files),flush=True)
+          PY
+      - name: Record original MAIN in real Streamlit browser (no mock answers)
+        shell: bash
+        run: |
+          set +e
+          PYTHONPATH="$PWD/main_engine/src" python harness/scripts/record_tx94_interview.py \
+            --engine-root main_engine --engine-ref main \
+            --engine-sha b4bfc744583060b5854184d7628fbd354e694771 \
+            --corpus-root tx94_shared_docs --provider gemini --model "$GEMINI_MODEL" \
+            --output filmed/main --port 19351
+          echo "MAIN_RECORDER_EXIT=$?" >> "$GITHUB_ENV"
+          exit 0
+      - name: Select factual and cited MAIN answer; cut only that Q&A for LinkedIn
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          if [ -s filmed/main/browser_results.json ] && \
+             [ -s filmed/main/full_uncut_interview.mp4 ]; then
+            python harness/scripts/make_main_linkedin_clip.py \
+              --report filmed/main/browser_results.json \
+              --rubric harness/evaluation/tx94_final_questions.json \
+              --video filmed/main/full_uncut_interview.mp4 \
+              --output edited-main
+          fi
+          echo "LINKEDIN_CLIP_AVAILABLE=$([ -s edited-main/tx94_main_linkedin_highlight.mp4 ] && echo yes || echo no)" >> "$GITHUB_ENV"
+          exit 0
+      - name: Save a public direct-download clip ONLY to isolated experimental branch
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          if [ -s edited-main/tx94_main_linkedin_highlight.mp4 ]; then
+            mkdir -p harness/media
+            cp edited-main/tx94_main_linkedin_highlight.mp4 harness/media/
+            cp edited-main/tx94_main_clip_manifest.json harness/media/
+            cp edited-main/tx94_main_answer_frame.jpg harness/media/
+            git -C harness config user.name "github-actions[bot]"
+            git -C harness config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git -C harness add media/tx94_main_linkedin_highlight.mp4 \
+              media/tx94_main_clip_manifest.json media/tx94_main_answer_frame.jpg
+            git -C harness commit -m "Archive authentic main TX94 Q&A highlight for LinkedIn"
+            git -C harness push origin \
+              HEAD:refs/heads/experiment/final-unseen-main-vs-citation-linkedin-2026-11-25
+            echo "PUBLIC_MAIN_VIDEO_PUSH_EXIT=$?" >> "$GITHUB_ENV"
+          else
+            echo "LINKEDIN_VIDEO_NOT_PUBLISHED_NO_VERIFIED_QA"
+          fi
+          exit 0
+      - name: Rest provider quota for citation-only engine
+        run: sleep 100
+      - name: Run same unseen TX94 questions against citation-only branch
+        shell: bash
+        run: |
+          set +e
+          PYTHONPATH="$PWD/citation_engine/src" python harness/scripts/record_tx94_interview.py \
+            --engine-root citation_engine --engine-ref citation \
+            --engine-sha 4ceacf40e0a63faf209b536d0b38427996b24316 \
+            --corpus-root tx94_shared_docs --provider gemini --model "$GEMINI_MODEL" \
+            --output filmed/citation --port 19352
+          echo "CITATION_RECORDER_EXIT=$?" >> "$GITHUB_ENV"
+          exit 0
+      - name: Independent semantic comparison; score citations separately
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          if [ -n "$OPENROUTER2" ] && \
+             [ -s filmed/main/browser_results.json ] && \
+             [ -s filmed/citation/browser_results.json ]; then
+            python harness/scripts/grade_tx94_semantic.py \
+              --baseline filmed/main/browser_results.json \
+              --candidate filmed/citation/browser_results.json \
+              --rubric harness/evaluation/tx94_final_questions.json \
+              --output comparisons \
+              --judge-provider openrouter \
+              --judge-model google/gemma-4-31b-it
+            echo "SEMANTIC_REVIEW_EXIT=$?" >> "$GITHUB_ENV"
+          else
+            echo "SEMANTIC_JUDGE_UNAVAILABLE"
+          fi
+          exit 0
+      - name: Upload small LinkedIn-ready MAIN clip, thumbnail and disclosure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: LINKEDIN-MAIN-TX94-real-QA-highlight-MP4
+          path: |
+            edited-main/tx94_main_linkedin_highlight.mp4
+            edited-main/tx94_main_answer_frame.jpg
+            edited-main/tx94_main_clip_manifest.json
+          if-no-files-found: warn
+          retention-days: 90
+          compression-level: 0
+      - name: Preserve exact raw first answers, original videos, sealed corpus and grading
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: TX94-FINAL-UNSEEN-MAIN-VS-CITATION-BENCHMARK
+          path: |
+            tx94_document_hashes.json
+            harness/evaluation/tx94_final_questions.json
+            filmed/main/browser_results.json
+            filmed/main/full_uncut_interview.webm
+            filmed/main/full_uncut_interview.mp4
+            filmed/citation/browser_results.json
+            filmed/citation/full_uncut_interview.webm
+            filmed/citation/full_uncut_interview.mp4
+            comparisons/
+          if-no-files-found: warn
+          retention-days: 90
+          compression-level: 0
+      - name: State honestly if provider rate limit prevented full comparison
+        if: always()
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          ps=[Path("filmed/main/browser_results.json"),
+              Path("filmed/citation/browser_results.json")]
+          if any(not p.is_file() for p in ps):
+              raise SystemExit("BENCHMARK_INCOMPLETE_NO_PAIRED_RESULT")
+          a,b=(json.loads(p.read_text()) for p in ps)
+          assert a["engine_sha"]=="b4bfc744583060b5854184d7628fbd354e694771"
+          assert b["engine_sha"]=="4ceacf40e0a63faf209b536d0b38427996b24316"
+          assert a["document_hashes"]==b["document_hashes"]
+          assert a["ground_truth_sha256"]==b["ground_truth_sha256"]
+          assert a["model"]==b["model"]=="gemini-3.5-flash-lite"
+          for r in (a,b):
+              print("TX94_REAL_INTERVIEW",r["engine_ref"],r["summary"],flush=True)
+          for r in (a,b):
+              if (r["summary"]["completed_with_answer"]!=8
+                      or not r["recording_verified"]):
+                  raise SystemExit("PROVIDER_OR_UI_INCOMPLETE_NO_8_CASE_WINNER")
+          print("ALL_8_PLUS_8_REAL_ANSWERS_RECORDED",flush=True)
+          review=Path("comparisons/semantic_review.json")
+          if review.is_file():
+              data=json.loads(review.read_text())
+              for side in ("main","candidate"):
+                  print("TX94_SEMANTIC",side,data["results"][side]["summary"],flush=True)
+          else:
+              print("MODEL_JUDGE_NOT_COMPLETED_USE_HUMAN_REVIEW")
+          PY
