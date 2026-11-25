@@ -116,111 +116,13 @@ basename but different extensions are managed independently.
 
 ### Source-linked AI answers
 
-The live Gemini, Groq, Ollama Cloud and OpenAI paths return model-written claims with
-source citations. Python checks that each cited location was actually retrieved and
-still exists in the local index. The interface shows the model's wording beside the
-original PDF/Word text or Excel cells. Model-supplied quotations are ignored; displayed
-source text comes from the index.
+The agent uses Gemini, Groq, Ollama Cloud, or OpenAI with read-only document tools to answer questions about indexed PDFs, Word files, and Excel sheets. Answers link to exact PDF passages, Word paragraphs or table rows, and spreadsheet cells. **Open source** displays the original indexed evidence (including the PDF page when available), not model-generated quotations.
 
-Each passage-level source reference has an **Open source** button. It opens the
-exact indexed PDF page and chunk, Word paragraph or table row, or Excel row or
-cell. For local PDFs, the panel also renders the original page when the file is
-still present in the indexed folder. The citation remains visible beside the
-source content. This helps a user check a model's interpretation; it is
-not an automatic fact-verification verdict.
+**Source validation** checks that each cited location was retrieved and still exists. This confirms provenance, **not factual correctness**; invalid citations or malformed responses are marked **unverified**. The legacy claim and semantic verifiers are not part of the live answer path.
 
-The active path **does not run the old claim verifier**. It does not judge model
-prose or approval status through broad semantic rules, so correct grouped Excel
-answers are no longer removed by per-row semantic checks. It does check that
-explicit dates in a claim occur somewhere in its cited passages, accepting
-equivalent unambiguous date formats. A valid citation establishes
-provenance, not factual correctness: a model can still misunderstand a passage or
-associate a short cell value with the wrong row. Such answers are labeled **AI answer
-with checked source references; facts not verified**. An invalid or unobserved
-citation is flagged, and its model claim remains visible as **unverified** so the
-user can inspect the problem. Malformed model output is also unverified.
+**Structured analysis** uses Python's `query_spreadsheet` tool for BOQ thresholds, totals, and supported contract comparisons, with cell-level references. `extract_dates` identifies candidate dates without treating every mention as a contractual obligation. Read-only fallbacks may run if a model skips a required numerical or date tool. Calculations are labeled deterministic only when the underlying evidence is complete and unambiguous.
 
-Financial BOQ filtering, strict thresholds and totals still come from Python's
-read-only `query_spreadsheet` tool. Its exact source cells and arithmetic are
-checked independently and labeled **deterministically calculated** when coverage
-is complete. If a model retrieves documents but omits the required numeric tool,
-the application runs a read-only deterministic fallback and labels that action
-as application initiated in the audit trace. Candidate date extraction likewise
-remains a tool result. For explicit requests to list all dates, the application
-runs `extract_dates` once if the model omits it, and labels that fallback as
-application initiated. Nearby text does not automatically prove a contractual obligation.
-
-For a BOQ-subtotal-versus-contract comparison, the application retrieves each
-worksheet total separately and an explicit original contract value from indexed
-PDF text. If one base worksheet and one contract value are unambiguous, Python
-compares those operands and cites the original amount cells and PDF passage.
-When the same question also asks about an exact BOQ item threshold, Python checks
-that item against the selected worksheet row and answers both parts separately.
-This answer is categorized **evidence-linked** and the UI notes that Python
-checked the amounts while source selection still needs review, because identifying
-the intended worksheet and contract clause depends on document wording. If the operands
-cannot be selected reliably, the application does not label model arithmetic as
-deterministically verified. Small matching worksheets, such as milestone registers,
-are supplied with all their indexed rows when they fit the context budget; larger
-tables are marked incomplete.
-
-The model still calls read-only document tools before answering. Repeated calls
-are cached and bounded. Every new search returns its query-relevant excerpt,
-even when an earlier search found the same citation. After search or inspection,
-the agent also hands the next model request bounded original text resolved from
-the index, up to 12,000 characters across the question. This makes source text
-available even when a model never calls `get_evidence`; it does not establish
-complete coverage of long documents. The audit records citation IDs and the size
-of this handoff, not its text. A model that reports insufficient evidence after
-retrieving sources
-gets at most one answer retry with indexed evidence; if it still reports absence,
-the answer remains unverified and the retrieved locations are shown for review.
-If it uses the entire tool-round budget, one final
-generation request with tools disabled asks it to answer from the evidence already
-retrieved, or state that evidence is insufficient. For prose questions, a provider
-that returns no answer shows no source references, since search hits alone do not
-support a claim. Deterministic numeric and date queries can still return their
-own checked source references.
-A question naming a specific date also gets a bounded, application-initiated lookup
-for indexed passages containing that date after the model's first document tool call.
-When a date question explicitly asks to distinguish planning or proposed dates,
-the same handoff includes bounded original rows or passages with those status terms.
-Its audit event is labeled `host_date_context`; it is not represented as a model
-function call. This improves cross-document evidence delivery without proving
-the model's interpretation of an approval decision.
-File-format inventory questions are counted directly from the local index after
-the model calls `list_documents`; document-level references support the file list,
-while factual claims still require passage or row citations.
-A provider may receive one formatting retry for malformed
-JSON, but there is no second model request just to judge the answer. The legacy
-`claim_verifier.py` and `semantic_verifier.py` remain for older offline regression
-experiments; neither filters claims in the live provider path. For ambiguous
-requests such as "the contract" when multiple contracts are indexed, name the
-file. Cross-workbook BOQ sums remain separated by file and currency.
-
-A structured response now needs only a claim and retrieved citation:
-
-```json
-{"answer":"Four circuits passed; two need retesting.","insufficient":false,
- "claims":[{"text":"Four circuits passed.","supports":[
-   {"citation":"Report.pdf | page 1 | chunk 0"}]}]}
-```
-
-Groq and other compatible providers retry one HTTP 429 only when its `retry-after`
-delay fits the bounded request budget; otherwise the app displays a wait message.
-Groq HTTP 400 `output_parse_failed` is handled separately. The agent makes at
-most one compact recovery request without including the provider's unparsed
-generation. If a tool-capable request fails before useful evidence is retrieved,
-the retry still uses real function calling. If evidence is already available,
-the retry requests a final answer with tools disabled. GPT-OSS 20B/120B and
-Qwen 3.8 27B use Groq's strict JSON schema on these tool-free final requests.
-An unrecoverable parsing failure produces a short error without the provider's
-`failed_generation` text. No failed output is treated as source evidence.
-Provider failures show a safe diagnostic containing only HTTP status, a sanitized
-error code, and the request phase (`tool` or `final`). Provider response bodies,
-keys, and model reasoning are never copied into that diagnostic.
-Ollama Cloud may not enforce structured output, so its JSON formatting still
-needs live checking with the selected model.
+**Reliability measures** include bounded tool calls, evidence handoff, limited retries, and an audit trace. Provider errors are sanitized to avoid exposing API keys or raw response bodies. Users can inspect the cited sources to assess the answer.
 
 ### Choose a provider and model in Streamlit
 
