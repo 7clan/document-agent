@@ -50,7 +50,7 @@ To enable optional local semantic retrieval, install `.[openai,embeddings,dev]`,
 
 ## Demonstration and tests
 
-The project is tested with fictional document collections, including an unseen eight-question interview recorded through the actual Streamlit app.
+The project is tested with fictional document collections, including an unseen eight-question interview recorded through the actual Streamlit app. Run the offline checks with `python -m pytest -q` and `ruff check src tests app.py scripts`.
 
 | Check | Result |
 | --- | --- |
