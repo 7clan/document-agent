@@ -1,0 +1,153 @@
+{
+  "dataset": "TX94 2026-11-25 Final Unseen LinkedIn Case Study",
+  "created_for": "Frozen prospective head-to-head between original main and citation-only PR11; answer key excluded from both agents",
+  "questions": [
+    {
+      "id": 1,
+      "category": "variation",
+      "critical": true,
+      "question": "Which signed variation approved new construction work, what exactly was added and at what cost, and did it authorize optional AI video analytics?",
+      "expected_answer": "Signed V-17 authorized fourteen stainless mounting brackets for signal cabinets on the East Viaduct access corridor for EUR 180,000; it did NOT approve optional AI video analytics.",
+      "source_documents": [
+        "02_TX94_Signed_Change_V17.pdf",
+        "03_TX94_Unsigned_Proposal_CR23.pdf"
+      ],
+      "required": [
+        "V[- ]?17",
+        "(?:14|fourteen)",
+        "180,?000",
+        "(?:not|no|excluded|unsigned|pending)"
+      ],
+      "forbidden": [],
+      "expected_citations": []
+    },
+    {
+      "id": 2,
+      "category": "finance",
+      "critical": true,
+      "question": "What is the full revised authorized contract value after the signed variation? Exclude the unsigned proposal.",
+      "expected_answer": "EUR 6,660,000 is the revised authorized contract value. The EUR 240,000 unsigned CR-23 was not included.",
+      "source_documents": [
+        "01_TX94_Executed_Agreement.pdf",
+        "02_TX94_Signed_Change_V17.pdf",
+        "03_TX94_Unsigned_Proposal_CR23.pdf"
+      ],
+      "required": [
+        "6,?660,?000"
+      ],
+      "forbidden": [],
+      "expected_citations": []
+    },
+    {
+      "id": 3,
+      "category": "acceptance",
+      "critical": true,
+      "question": "Do the passing quality checks establish final contractual acceptance? Identify the outstanding certificate and who must sign it.",
+      "expected_answer": "No. Passing checks are not final acceptance. The Chief Systems Assurance Officer of Asterline Transit Authority must sign a System Acceptance Certificate; none has been issued.",
+      "source_documents": [
+        "01_TX94_Executed_Agreement.pdf",
+        "06_TX94_QA_Field_Checks.pdf",
+        "04_TX94_Coordination_Minutes.docx"
+      ],
+      "required": [
+        "(?:not|no|insufficient|cannot)",
+        "System Acceptance Certificate",
+        "Chief Systems Assurance Officer"
+      ],
+      "forbidden": [],
+      "expected_citations": []
+    },
+    {
+      "id": 4,
+      "category": "spreadsheet",
+      "critical": false,
+      "question": "Which individual line items in the Selected Signed BOQ exceed EUR 1.2 million, strictly greater than, and what are their amounts?",
+      "expected_answer": "RS-102 EUR 1,290,000 and RS-104 EUR 1,790,000. RS-103 at exactly EUR 1,200,000 does not exceed the threshold.",
+      "source_documents": [
+        "05_TX94_Partial_Cost_Book.xlsx"
+      ],
+      "required": [
+        "RS-102",
+        "RS-104",
+        "1,?290,?000",
+        "1,?790,?000"
+      ],
+      "forbidden": [],
+      "expected_citations": []
+    },
+    {
+      "id": 5,
+      "category": "deadlines",
+      "critical": true,
+      "question": "Contrast the internal readiness forecast, the binding signed contractual handover, and the unapproved requested new handover date.",
+      "expected_answer": "18 November 2029 is internal planning; 28 November 2029 is binding signed handover; 12 December 2029 is only an unsigned proposed change in CR-23.",
+      "source_documents": [
+        "01_TX94_Executed_Agreement.pdf",
+        "03_TX94_Unsigned_Proposal_CR23.pdf",
+        "04_TX94_Coordination_Minutes.docx",
+        "07_TX94_Schedule.xlsx"
+      ],
+      "required": [
+        "18\\s*(?:Nov|November)\\s*2029",
+        "28\\s*(?:Nov|November)\\s*2029",
+        "12\\s*(?:Dec|December)\\s*2029"
+      ],
+      "forbidden": [],
+      "expected_citations": []
+    },
+    {
+      "id": 6,
+      "category": "quality",
+      "critical": false,
+      "question": "How many platform-safety interlock checks passed out of the inspected total, and which sensor IDs still need recalibration?",
+      "expected_answer": "15 of 18 passed; PS-04, PS-09, and PS-12 failed and require recalibration.",
+      "source_documents": [
+        "06_TX94_QA_Field_Checks.pdf",
+        "08_TX94_Issues_and_Risks.pdf"
+      ],
+      "required": [
+        "(?:15|fifteen)",
+        "(?:18|eighteen)",
+        "PS-04",
+        "PS-09",
+        "PS-12"
+      ],
+      "forbidden": [],
+      "expected_citations": []
+    },
+    {
+      "id": 7,
+      "category": "equipment",
+      "critical": false,
+      "question": "Give the quantity and voltage of the platform-safety sensors, plus the number of remote signal cabinets.",
+      "expected_answer": "Twelve platform-safety sensors PS-01 through PS-12 operating at 24 VDC and six remote signal cabinets.",
+      "source_documents": [
+        "01_TX94_Executed_Agreement.pdf"
+      ],
+      "required": [
+        "(?:12|twelve)",
+        "24\\s*V",
+        "(?:6|six)"
+      ],
+      "forbidden": [],
+      "expected_citations": []
+    },
+    {
+      "id": 8,
+      "category": "calculation",
+      "critical": true,
+      "question": "Assuming the signed V-17 revised authorized total is used for retention, compute the five-percent holdback in EUR and show the inputs.",
+      "expected_answer": "Five percent of EUR 6,660,000 equals EUR 333,000; 5% retention on the revised signed authorized total, not on unsigned CR-23.",
+      "source_documents": [
+        "01_TX94_Executed_Agreement.pdf",
+        "02_TX94_Signed_Change_V17.pdf"
+      ],
+      "required": [
+        "333,?000",
+        "(?:5\\s*%|five percent)"
+      ],
+      "forbidden": [],
+      "expected_citations": []
+    }
+  ]
+}
